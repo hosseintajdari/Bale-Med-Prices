@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pricing App</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero">
+        <p class="eyebrow">Pharmacy Pricing</p>
+        <h1>Find consumer medicine price in one calm workspace</h1>
+        <p class="hero-copy">
+          Search medicines in Persian or English, review unit price clearly, and keep the
+          same pricing core ready for web and messaging bots.
+        </p>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel panel-search">
+          <label class="field">
+            <span class="field-label">Search goods</span>
+            <input
+              id="search-input"
+              class="text-input"
+              placeholder="Title, barcode, generic code, internal code"
+            />
+          </label>
+
+          <p id="search-status" class="status-text" aria-live="polite"></p>
+          <div id="search-results" class="search-results"></div>
+        </aside>
+
+        <section class="panel panel-pricing">
+          <div class="panel-heading">
+            <h2>Consumer Price Finder</h2>
+            <p>Pick a medicine from the left and calculate a clear consumer-facing price.</p>
+          </div>
+
+          <form id="pricing-form" class="pricing-form">
+            <label class="field">
+              <span class="field-label">Good id</span>
+              <input id="good-id" name="goodId" class="text-input" placeholder="g-1001" />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Document date</span>
+              <input
+                id="document-date"
+                name="documentDate"
+                class="text-input"
+                value="2026-06-24"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Quantity</span>
+              <input
+                id="quantity"
+                name="quantity"
+                class="text-input"
+                type="number"
+                min="1"
+                value="1"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Warehouse</span>
+              <input
+                id="warehouse-id"
+                name="warehouseId"
+                class="text-input"
+                value="main"
+              />
+            </label>
+
+            <label class="checkbox-field">
+              <input id="include-technical-fee" name="includeTechnicalFee" type="checkbox" checked />
+              <span>Include technical fee</span>
+            </label>
+
+            <button id="calculate-button" class="primary-button" type="submit">
+              Find consumer price
+            </button>
+            <button id="reset-button" class="secondary-button" type="button">
+              Reset form
+            </button>
+          </form>
+
+          <div id="selected-good" class="selected-good is-hidden"></div>
+          <p id="pricing-status" class="status-text" aria-live="polite"></p>
+          <div id="form-hints" class="hint-list"></div>
+          <div id="pricing-result" class="result-grid"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+  </html>
