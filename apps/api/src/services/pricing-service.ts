@@ -6,10 +6,23 @@ import { calculateFinalPrice } from "../../../../packages/domain/src/rules/calcu
 
 function formatCurrency(value) {
   if (value == null) {
-    return "Unavailable";
+    return "نامشخص";
   }
 
-  return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat("fa-IR").format(value);
+}
+
+function patientUnitLabel(unitLabel) {
+  const labels = {
+    bottle: "شربت",
+    capsule: "کپسول",
+    softgel: "سافت‌ژل",
+    suppository: "شیاف",
+    tablet: "قرص",
+    tube: "تیوب"
+  };
+
+  return labels[unitLabel] ?? unitLabel ?? "واحد";
 }
 
 function buildSourceHints(good) {
@@ -27,15 +40,15 @@ function buildTelegramText(result) {
   const lines = [
     `💊 ${result.title}`,
     result.persianTitle,
-    `Unit price: ${formatCurrency(result.consumerUnitPrice)} per ${result.unitLabel}`,
-    `Final price: ${formatCurrency(result.finalConsumerPrice)}`,
-    `Quantity: ${result.quantity}`,
-    `Pack: ${result.packLabel}`,
-    `Sources: ${result.sourceHints.map((source) => source.label).join(", ")}`
+    `قیمت هر ${patientUnitLabel(result.unitLabel)}: ${formatCurrency(result.consumerUnitPrice)} ریال`,
+    `قیمت نهایی: ${formatCurrency(result.finalConsumerPrice)} ریال`,
+    `تعداد: ${formatCurrency(result.quantity)}`,
+    `بسته‌بندی: ${result.packLabel}`,
+    `منبع قیمت: ${result.sourceHints.map((source) => source.label).join("، ")}`
   ];
 
   if (result.warnings.length > 0) {
-    lines.push(`Warnings: ${result.warnings.join(" | ")}`);
+    lines.push(`هشدار: ${result.warnings.join(" | ")}`);
   }
 
   return lines.join("\n");

@@ -1,8 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { botController } from "../controllers/bot-controller.ts";
 import { botLookupService } from "./bot-lookup-service.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
 import { selectionSessionStore } from "./selection-session-store.ts";
+
+function invokeSelectController(url) {
+  let body = "";
+  const response = {
+    statusCode: 200,
+    setHeader() {},
+    end(value) {
+      body = value;
+    }
+  };
+
+  botController.select({ url }, response);
+
+  return {
+    statusCode: response.statusCode,
+    body: JSON.parse(body)
+  };
+}
 
 test.beforeEach(() => {
   selectionHistoryStore.resetForTest();
@@ -69,6 +88,66 @@ test("botLookupService continues selection from form to strength", () => {
   assert.equal(result.type, "needs_strength_selection");
   assert.match(result.text, /دوز دارو را انتخاب کنید/);
   assert.ok(result.selection.choices.some((choice) => choice.label === "۵۰۰ میلی‌گرم"));
+});
+
+test("botController select accepts Telegram callbackData with colon-separated choice ids", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const tabletButton = firstStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "قرص");
+
+  const result = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(tabletButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.type, "needs_strength_selection");
+  assert.match(result.body.text, /دوز دارو را انتخاب کنید/);
+  assert.ok(result.body.selection.choices.some((choice) => choice.label === "۵۰۰ میلی‌گرم"));
+});
+
+test("botController select returns patient-readable text for an expired selection", () => {
+  const result = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent("ms:sel-old:form:tablet")}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.type, "expired_selection");
+  assert.match(result.body.text, /این جستجو قدیمی شده/);
+});
+
+test("botController select resolves form and strength callbacks to Persian unit price", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const tabletButton = firstStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "قرص");
+  const strengthStep = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(tabletButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  ).body;
+  const strengthButton = strengthStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "۵۰۰ میلی‌گرم");
+
+  const result = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(strengthButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.type, "resolved");
+  assert.equal(result.body.goodId, "g-1006");
+  assert.match(result.body.text, /قیمت هر قرص:/);
 });
 
 test("botLookupService resolves a selected strength to unit price", () => {

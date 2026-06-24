@@ -45,7 +45,7 @@ test("pricingService returns patient-facing consumer pricing fields", () => {
   assert.equal(result.sourceHints[0].key, "qanoon");
   assert.equal(result.sourceHints[1].key, "ttac");
   assert.equal(result.telegram.copyReady, true);
-  assert.match(result.telegram.text, /Unit price:/);
+  assert.match(result.telegram.text, /قیمت هر شربت:/);
 });
 
 test("pricingService can return telegram-friendly compact payload", () => {
@@ -62,5 +62,5 @@ test("pricingService can return telegram-friendly compact payload", () => {
   assert.equal(result.copyReady, true);
   assert.equal(result.parseMode, "plain_text");
   assert.match(result.text, /Losartan 50mg Tablet/);
-  assert.match(result.text, /Unit price:/);
+  assert.match(result.text, /قیمت هر قرص:/);
 });
