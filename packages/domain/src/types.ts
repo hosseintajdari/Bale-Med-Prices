@@ -24,6 +24,12 @@ export interface Good {
   countInPackage: number;
   unitLabel: string;
   packLabel: string;
+  dosageForm?: string;
+  routeQualifier?: string;
+  strengthLabel?: string;
+  patientFormLabel?: string;
+  packageDescription?: string;
+  activeStatus?: "active" | "inactive" | "unknown";
   ttacCode?: string;
   sources: SourceReference[];
 }

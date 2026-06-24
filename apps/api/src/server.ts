@@ -60,6 +60,11 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "GET" && request.url.startsWith("/bot/select")) {
+    botController.select(request, response);
+    return;
+  }
+
   if (request.method === "GET" && request.url.startsWith("/goods/")) {
     goodsController.getById(request, response);
     return;

@@ -1,41 +1,134 @@
-import { goodsService } from "./goods-service.ts";
+import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { pricingService } from "./pricing-service.ts";
 
-function buildChoiceLine(item) {
-  return `- ${item.id} | ${item.title} | ${item.persianTitle} | ${item.unitLabel} | ${item.consumerUnitPrice}`;
+function buildChoiceLine(choice) {
+  return `- ${choice.label}${choice.description ? ` | ${choice.description}` : ""}`;
 }
 
-function buildSelectionText(query, items) {
+function buildSelectionText(query, selection) {
   const lines = [
     `Search: ${query}`,
-    `I found ${items.length} matching medicines.`,
-    `Reply with one id from the list below:`,
-    ...items.slice(0, 5).map(buildChoiceLine)
+    `I found ${selection.items?.length ?? selection.choices.length} matching medicines.`,
+    selection.prompt ?? `Reply with one id from the list below:`,
+    ...selection.choices.map(buildChoiceLine)
   ];
 
-  if (items.length > 5) {
+  if (selection.items?.length > 5) {
     lines.push("More matches exist. Narrow the search query.");
   }
 
   return lines.join("\n");
 }
 
-function buildSelectionChoice(item) {
+function buildSelectionChoice(choice, sessionId) {
   return {
-    id: item.id,
-    label: `${item.title} | ${item.persianTitle}`,
-    description: `${item.unitLabel} | ${item.consumerUnitPrice}`,
-    value: {
-      goodId: item.id
+    id: choice.id,
+    label: choice.label,
+    description: choice.description,
+    value: choice.value ?? {},
+    sessionId
+  };
+}
+
+function buildTelegramButton(choice, sessionId) {
+  return {
+    text: choice.label,
+    callback_data: `ms:${sessionId}:${choice.id}`
+  };
+}
+
+function calculateResolved(selection, input) {
+  const pricing = pricingService.calculate({
+    goodId: selection.goodId,
+    documentDate: input.documentDate ?? "2026-06-24",
+    quantity: Number(input.quantity ?? 1),
+    warehouseId: input.warehouseId ?? "main",
+    includeTechnicalFee: Boolean(input.includeTechnicalFee),
+    format: "telegram"
+  });
+
+  return {
+    type: "resolved",
+    query: selection.query,
+    goodId: selection.goodId,
+    text: pricing.text,
+    parseMode: pricing.parseMode,
+    copyReady: true,
+    sourceHints: pricing.sourceHints,
+    warnings: pricing.warnings,
+    moreInfo: {
+      ttacDetail: null
     }
   };
 }
 
-function buildTelegramButton(item) {
+function buildSelectionResponse(selection) {
+  const choices = selection.choices ?? [];
+
   return {
-    text: `${item.id} | ${item.title}`,
-    callback_data: `select_good:${item.id}`
+    type: selection.type,
+    query: selection.query,
+    total: selection.total ?? selection.items?.length ?? choices.length,
+    sessionId: selection.sessionId,
+    text: buildSelectionText(selection.query, selection),
+    copyReady: true,
+    items: (selection.items ?? []).slice(0, 5).map((item) => ({
+      id: item.id,
+      title: item.title,
+      persianTitle: item.persianTitle,
+      unitLabel: item.unitLabel,
+      dosageForm: item.dosageForm,
+      routeQualifier: item.routeQualifier,
+      strengthLabel: item.strengthLabel,
+      patientFormLabel: item.patientFormLabel,
+      packageDescription: item.packageDescription
+    })),
+    selection: {
+      kind: "single_choice",
+      prompt: selection.prompt,
+      sessionId: selection.sessionId,
+      choices: choices.map((choice) => buildSelectionChoice(choice, selection.sessionId))
+    },
+    telegram: {
+      replyMarkup: {
+        inline_keyboard: choices.map((choice) => [buildTelegramButton(choice, selection.sessionId)])
+      }
+    }
   };
+}
+
+function toBotResponse(selection, input) {
+  if (selection.type === "resolved") {
+    return calculateResolved(selection, input);
+  }
+
+  if (selection.type === "not_found") {
+    return {
+      type: "not_found",
+      query: selection.query,
+      text: `No medicine was found for: ${selection.query}`,
+      copyReady: true
+    };
+  }
+
+  if (selection.type === "expired_selection" || selection.type === "invalid_selection") {
+    return {
+      type: selection.type,
+      text: selection.text,
+      copyReady: true
+    };
+  }
+
+  if (selection.type === "refine_search") {
+    return {
+      type: "refine_search",
+      query: selection.query,
+      text: selection.text,
+      copyReady: true
+    };
+  }
+
+  return buildSelectionResponse(selection);
 }
 
 export const botLookupService = {
@@ -48,65 +141,22 @@ export const botLookupService = {
       throw error;
     }
 
-    const searchResult = goodsService.search(`/goods/search?q=${encodeURIComponent(query)}`);
+    return toBotResponse(medicineSelectionService.start({ query }), input);
+  },
 
-    if (searchResult.total === 0) {
-      return {
-        type: "not_found",
-        query,
-        text: `No medicine was found for: ${query}`,
-        copyReady: true
-      };
+  select(input) {
+    if (!input.sessionId) {
+      const error = new Error("Missing required field 'sessionId'");
+      error.statusCode = 400;
+      throw error;
     }
 
-    if (searchResult.total === 1) {
-      const item = searchResult.items[0];
-      const pricing = pricingService.calculate({
-        goodId: item.id,
-        documentDate: input.documentDate ?? "2026-06-24",
-        quantity: Number(input.quantity ?? 1),
-        warehouseId: input.warehouseId ?? "main",
-        includeTechnicalFee: Boolean(input.includeTechnicalFee),
-        format: "telegram"
-      });
-
-      return {
-        type: "resolved",
-        query,
-        goodId: item.id,
-        text: pricing.text,
-        parseMode: pricing.parseMode,
-        copyReady: true,
-        sourceHints: pricing.sourceHints,
-        warnings: pricing.warnings
-      };
+    if (!input.choiceId) {
+      const error = new Error("Missing required field 'choiceId'");
+      error.statusCode = 400;
+      throw error;
     }
 
-    const selectableItems = searchResult.items.slice(0, 5);
-
-    return {
-      type: "needs_selection",
-      query,
-      total: searchResult.total,
-      text: buildSelectionText(query, searchResult.items),
-      copyReady: true,
-      items: selectableItems.map((item) => ({
-        id: item.id,
-        title: item.title,
-        persianTitle: item.persianTitle,
-        consumerUnitPrice: item.consumerUnitPrice,
-        unitLabel: item.unitLabel
-      })),
-      selection: {
-        kind: "single_choice",
-        prompt: "Choose one medicine match",
-        choices: selectableItems.map(buildSelectionChoice)
-      },
-      telegram: {
-        replyMarkup: {
-          inline_keyboard: selectableItems.map((item) => [buildTelegramButton(item)])
-        }
-      }
-    };
+    return toBotResponse(medicineSelectionService.continue(input), input);
   }
 };

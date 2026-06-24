@@ -12,9 +12,17 @@ function parseSearchTerm(queryString) {
     .toLowerCase();
 }
 
+function tokenize(term) {
+  return term
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
 export const goodsRepository = {
   search(queryString) {
     const term = parseSearchTerm(queryString);
+    const tokens = tokenize(term);
 
     if (!term) {
       return goods.slice(0, 20);
@@ -30,10 +38,17 @@ export const goodsRepository = {
         good.brand,
         good.persianTitle,
         good.englishTitle,
+        good.dosageForm,
+        good.routeQualifier,
+        good.strengthLabel,
+        good.patientFormLabel,
+        good.packageDescription,
+        good.activeStatus,
         ...good.aliases
-      ];
+      ].filter(Boolean);
 
-      return haystacks.some((value) => value.toLowerCase().includes(term));
+      const searchableText = haystacks.map((value) => value.toLowerCase()).join(" ");
+      return tokens.every((token) => searchableText.includes(token));
     });
   },
 
