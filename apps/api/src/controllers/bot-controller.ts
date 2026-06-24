@@ -1,4 +1,11 @@
+import { parseMedicineSelectionCallbackData } from "./bot-callback-parser.ts";
 import { botLookupService } from "../services/bot-lookup-service.ts";
+
+function invalidCallbackDataError() {
+  const error = new Error("Invalid callback data");
+  error.statusCode = 400;
+  return error;
+}
 
 export const botController = {
   lookup(request, response) {
@@ -29,10 +36,15 @@ export const botController = {
   select(request, response) {
     try {
       const url = new URL(request.url ?? "", "http://localhost");
-      const callbackData = url.searchParams.get("callbackData") ?? "";
-      const callbackParts = callbackData.startsWith("ms:") ? callbackData.split(":") : [];
-      const sessionId = url.searchParams.get("sessionId") ?? callbackParts[1] ?? "";
-      const choiceId = url.searchParams.get("choiceId") ?? callbackParts.slice(2).join(":") ?? "";
+      const callbackData = url.searchParams.get("callbackData");
+      const callback = callbackData == null ? null : parseMedicineSelectionCallbackData(callbackData);
+
+      if (callback && !callback.valid) {
+        throw invalidCallbackDataError();
+      }
+
+      const sessionId = url.searchParams.get("sessionId") ?? callback?.sessionId ?? "";
+      const choiceId = url.searchParams.get("choiceId") ?? callback?.choiceId ?? "";
 
       const result = botLookupService.select({
         sessionId,

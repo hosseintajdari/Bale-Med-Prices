@@ -288,7 +288,7 @@ function finalizeSelectionIfResolved(result, sessionId) {
 export const medicineSelectionService = {
   start(input) {
     const query = (input.query ?? "").trim();
-    const searchResult = goodsService.search(`/goods/search?q=${encodeURIComponent(query)}`);
+    const searchResult = goodsService.search({ query });
     const rankedItems = rankItems(query, searchResult.items);
 
     return {

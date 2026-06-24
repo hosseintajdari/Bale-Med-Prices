@@ -43,16 +43,15 @@ function calculateResolved(selection, input) {
     documentDate: input.documentDate ?? "2026-06-24",
     quantity: Number(input.quantity ?? 1),
     warehouseId: input.warehouseId ?? "main",
-    includeTechnicalFee: Boolean(input.includeTechnicalFee),
-    format: "telegram"
+    includeTechnicalFee: Boolean(input.includeTechnicalFee)
   });
 
   return {
     type: "resolved",
     query: selection.query,
     goodId: selection.goodId,
-    text: pricing.text,
-    parseMode: pricing.parseMode,
+    text: pricing.telegram.text,
+    parseMode: pricing.telegram.parseMode,
     copyReady: true,
     sourceHints: pricing.sourceHints,
     warnings: pricing.warnings,

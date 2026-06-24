@@ -1,17 +1,5 @@
 import { goods } from "../data/mock-data.ts";
 
-function parseSearchTerm(queryString) {
-  const url = new URL(queryString, "http://localhost");
-  return (
-    url.searchParams.get("q") ??
-    url.searchParams.get("query") ??
-    url.searchParams.get("term") ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
-}
-
 function tokenize(term) {
   return term
     .split(/\s+/)
@@ -20,8 +8,8 @@ function tokenize(term) {
 }
 
 export const goodsRepository = {
-  search(queryString) {
-    const term = parseSearchTerm(queryString);
+  search(input) {
+    const term = (input?.query ?? "").trim().toLowerCase();
     const tokens = tokenize(term);
 
     if (!term) {

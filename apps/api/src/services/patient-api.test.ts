@@ -1,11 +1,53 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
+import { goodsController } from "../controllers/goods-controller.ts";
+import { pricingController } from "../controllers/pricing-controller.ts";
 import { goodsService } from "./goods-service.ts";
 import { pricingService } from "./pricing-service.ts";
 
+function invokeGoodsSearchController(url) {
+  let body = "";
+  const response = {
+    statusCode: 200,
+    setHeader() {},
+    end(value) {
+      body = value;
+    }
+  };
+
+  goodsController.search({ url }, response);
+
+  return {
+    statusCode: response.statusCode,
+    body: JSON.parse(body)
+  };
+}
+
+async function invokePricingController(url, payload) {
+  let body = "";
+  const request = Readable.from([Buffer.from(JSON.stringify(payload))]);
+  request.url = url;
+
+  const response = {
+    statusCode: 200,
+    setHeader() {},
+    end(value) {
+      body = value;
+    }
+  };
+
+  await pricingController.calculate(request, response);
+
+  return {
+    statusCode: response.statusCode,
+    body: JSON.parse(body)
+  };
+}
+
 test("goodsService search supports Persian and English aliases", () => {
-  const englishResult = goodsService.search("/goods/search?q=amox");
-  const persianResult = goodsService.search("/goods/search?q=لوزارتان");
+  const englishResult = goodsService.search({ query: "amox" });
+  const persianResult = goodsService.search({ query: "لوزارتان" });
 
   assert.equal(englishResult.total, 1);
   assert.equal(englishResult.items[0].id, "g-1001");
@@ -16,14 +58,15 @@ test("goodsService search supports Persian and English aliases", () => {
   assert.equal(persianResult.items[0].persianTitle, "لوزارتان ۵۰ میلی گرم");
 });
 
-test("goodsService can return telegram-friendly search payload", () => {
-  const result = goodsService.search("/goods/search?q=vit&format=telegram");
+test("goodsController can return telegram-friendly search payload", () => {
+  const result = invokeGoodsSearchController("/goods/search?q=vit&format=telegram");
 
-  assert.equal(result.copyReady, true);
-  assert.equal(result.total, 1);
-  assert.match(result.text, /Search: vit/);
-  assert.match(result.text, /Vitamin D3 1000 IU/);
-  assert.equal(result.items[0].id, "g-1005");
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.copyReady, true);
+  assert.equal(result.body.total, 1);
+  assert.match(result.body.text, /Search: vit/);
+  assert.match(result.body.text, /Vitamin D3 1000 IU/);
+  assert.equal(result.body.items[0].id, "g-1005");
 });
 
 test("pricingService returns patient-facing consumer pricing fields", () => {
@@ -48,19 +91,19 @@ test("pricingService returns patient-facing consumer pricing fields", () => {
   assert.match(result.telegram.text, /قیمت هر شربت:/);
 });
 
-test("pricingService can return telegram-friendly compact payload", () => {
-  const result = pricingService.calculate({
+test("pricingController can return telegram-friendly compact payload", async () => {
+  const result = await invokePricingController("/pricing/calculate?format=telegram", {
     goodId: "g-1003",
     documentDate: "2026-06-24",
     quantity: 1,
     warehouseId: "main",
-    includeTechnicalFee: true,
-    format: "telegram"
+    includeTechnicalFee: true
   });
 
-  assert.equal(result.goodId, "g-1003");
-  assert.equal(result.copyReady, true);
-  assert.equal(result.parseMode, "plain_text");
-  assert.match(result.text, /Losartan 50mg Tablet/);
-  assert.match(result.text, /قیمت هر قرص:/);
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.goodId, "g-1003");
+  assert.equal(result.body.copyReady, true);
+  assert.equal(result.body.parseMode, "plain_text");
+  assert.match(result.body.text, /Losartan 50mg Tablet/);
+  assert.match(result.body.text, /قیمت هر قرص:/);
 });

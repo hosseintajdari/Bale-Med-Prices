@@ -1,17 +1,5 @@
 import { goodsRepository } from "../repositories/goods-repository.ts";
 
-function parseSearchOptions(queryString) {
-  const url = new URL(queryString, "http://localhost");
-  return {
-    query:
-      url.searchParams.get("q") ??
-      url.searchParams.get("query") ??
-      url.searchParams.get("term") ??
-      "",
-    format: url.searchParams.get("format") ?? "default"
-  };
-}
-
 function toPatientSearchItem(good) {
   return {
     id: good.id,
@@ -40,46 +28,9 @@ function toPatientSearchItem(good) {
   };
 }
 
-function buildTelegramSearchText(items, query) {
-  if (items.length === 0) {
-    return `No medicine was found for: ${query || "your search"}`;
-  }
-
-  const lines = [`Search: ${query || "all medicines"}`, `Matches: ${items.length}`];
-
-  for (const item of items.slice(0, 5)) {
-    lines.push(
-      `- ${item.title} | ${item.persianTitle} | ${item.unitLabel} | ${item.consumerUnitPrice}`
-    );
-  }
-
-  if (items.length > 5) {
-    lines.push(`More results are available. Narrow the search query.`);
-  }
-
-  return lines.join("\n");
-}
-
 export const goodsService = {
-  search(queryString) {
-    const options = parseSearchOptions(queryString);
-    const items = goodsRepository.search(queryString).map(toPatientSearchItem);
-
-    if (options.format === "telegram") {
-      return {
-        query: options.query,
-        total: items.length,
-        text: buildTelegramSearchText(items, options.query),
-        copyReady: true,
-        items: items.slice(0, 5).map((item) => ({
-          id: item.id,
-          title: item.title,
-          persianTitle: item.persianTitle,
-          consumerUnitPrice: item.consumerUnitPrice,
-          unitLabel: item.unitLabel
-        }))
-      };
-    }
+  search(input) {
+    const items = goodsRepository.search({ query: input?.query ?? "" }).map(toPatientSearchItem);
 
     return {
       items,

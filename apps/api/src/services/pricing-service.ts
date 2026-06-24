@@ -54,7 +54,7 @@ function buildTelegramText(result) {
   return lines.join("\n");
 }
 
-function toPatientPricingResponse(result, format = "default") {
+function toPatientPricingResponse(result) {
   const response = {
     goodId: result.goodId,
     title: result.title,
@@ -93,17 +93,6 @@ function toPatientPricingResponse(result, format = "default") {
     parseMode: "plain_text",
     copyReady: true
   };
-
-  if (format === "telegram") {
-    return {
-      goodId: response.goodId,
-      text: response.telegram.text,
-      parseMode: response.telegram.parseMode,
-      copyReady: true,
-      sourceHints: response.sourceHints,
-      warnings: response.warnings
-    };
-  }
 
   return response;
 }
@@ -153,6 +142,6 @@ export const pricingService = {
       avgCost: stock?.avgCost ?? null
     });
 
-    return toPatientPricingResponse(result, input.format ?? "default");
+    return toPatientPricingResponse(result);
   }
 };

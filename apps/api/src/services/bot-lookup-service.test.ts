@@ -122,6 +122,15 @@ test("botController select returns patient-readable text for an expired selectio
   assert.match(result.body.text, /این جستجو قدیمی شده/);
 });
 
+test("botController select rejects malformed Telegram callbackData", () => {
+  const result = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent("broken-callback")}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.body.error, "Invalid callback data");
+});
+
 test("botController select resolves form and strength callbacks to Persian unit price", () => {
   const firstStep = botLookupService.lookup({
     query: "استامینوفن",
