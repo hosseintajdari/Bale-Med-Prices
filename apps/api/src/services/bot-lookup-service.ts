@@ -1,41 +1,6 @@
 import { medicineSelectionService } from "./medicine-selection-service.ts";
+import { botResponsePresenter } from "./bot-response-presenter.ts";
 import { pricingService } from "./pricing-service.ts";
-
-function buildChoiceLine(choice) {
-  return `- ${choice.label}${choice.description ? ` | ${choice.description}` : ""}`;
-}
-
-function buildSelectionText(query, selection) {
-  const lines = [
-    `Search: ${query}`,
-    `I found ${selection.items?.length ?? selection.choices.length} matching medicines.`,
-    selection.prompt ?? `Reply with one id from the list below:`,
-    ...selection.choices.map(buildChoiceLine)
-  ];
-
-  if (selection.items?.length > 5) {
-    lines.push("More matches exist. Narrow the search query.");
-  }
-
-  return lines.join("\n");
-}
-
-function buildSelectionChoice(choice, sessionId) {
-  return {
-    id: choice.id,
-    label: choice.label,
-    description: choice.description,
-    value: choice.value ?? {},
-    sessionId
-  };
-}
-
-function buildTelegramButton(choice, sessionId) {
-  return {
-    text: choice.label,
-    callback_data: `ms:${sessionId}:${choice.id}`
-  };
-}
 
 function calculateResolved(selection, input) {
   const pricing = pricingService.calculate({
@@ -45,53 +10,19 @@ function calculateResolved(selection, input) {
     warehouseId: input.warehouseId ?? "main",
     includeTechnicalFee: Boolean(input.includeTechnicalFee)
   });
+  const presentation = botResponsePresenter.pricing(pricing);
 
   return {
     type: "resolved",
     query: selection.query,
     goodId: selection.goodId,
-    text: pricing.telegram.text,
-    parseMode: pricing.telegram.parseMode,
-    copyReady: true,
+    text: presentation.text,
+    parseMode: presentation.parseMode,
+    copyReady: presentation.copyReady,
     sourceHints: pricing.sourceHints,
     warnings: pricing.warnings,
     moreInfo: {
       ttacDetail: null
-    }
-  };
-}
-
-function buildSelectionResponse(selection) {
-  const choices = selection.choices ?? [];
-
-  return {
-    type: selection.type,
-    query: selection.query,
-    total: selection.total ?? selection.items?.length ?? choices.length,
-    sessionId: selection.sessionId,
-    text: buildSelectionText(selection.query, selection),
-    copyReady: true,
-    items: (selection.items ?? []).slice(0, 5).map((item) => ({
-      id: item.id,
-      title: item.title,
-      persianTitle: item.persianTitle,
-      unitLabel: item.unitLabel,
-      dosageForm: item.dosageForm,
-      routeQualifier: item.routeQualifier,
-      strengthLabel: item.strengthLabel,
-      patientFormLabel: item.patientFormLabel,
-      packageDescription: item.packageDescription
-    })),
-    selection: {
-      kind: "single_choice",
-      prompt: selection.prompt,
-      sessionId: selection.sessionId,
-      choices: choices.map((choice) => buildSelectionChoice(choice, selection.sessionId))
-    },
-    telegram: {
-      replyMarkup: {
-        inline_keyboard: choices.map((choice) => [buildTelegramButton(choice, selection.sessionId)])
-      }
     }
   };
 }
@@ -127,7 +58,7 @@ function toBotResponse(selection, input) {
     };
   }
 
-  return buildSelectionResponse(selection);
+  return botResponsePresenter.selection(selection);
 }
 
 export const botLookupService = {

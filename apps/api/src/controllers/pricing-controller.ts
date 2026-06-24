@@ -1,4 +1,5 @@
 import { pricingService } from "../services/pricing-service.ts";
+import { botResponsePresenter } from "../services/bot-response-presenter.ts";
 
 async function readJsonBody(request) {
   const chunks = [];
@@ -20,17 +21,6 @@ function getRequestedFormat(url) {
   return parsed.searchParams.get("format") ?? undefined;
 }
 
-function toTelegramPricingResponse(result) {
-  return {
-    goodId: result.goodId,
-    text: result.telegram.text,
-    parseMode: result.telegram.parseMode,
-    copyReady: result.telegram.copyReady,
-    sourceHints: result.sourceHints,
-    warnings: result.warnings
-  };
-}
-
 export const pricingController = {
   async calculate(request, response) {
     try {
@@ -39,7 +29,7 @@ export const pricingController = {
       const { format: _format, ...pricingInput } = payload;
       const pricingResult = pricingService.calculate(pricingInput);
       const result =
-        format === "telegram" ? toTelegramPricingResponse(pricingResult) : pricingResult;
+        format === "telegram" ? botResponsePresenter.compactPricing(pricingResult) : pricingResult;
 
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(result));

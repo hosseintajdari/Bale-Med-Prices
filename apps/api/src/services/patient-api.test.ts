@@ -87,8 +87,7 @@ test("pricingService returns patient-facing consumer pricing fields", () => {
   assert.equal(result.packEstimatedPrice, 304200);
   assert.equal(result.sourceHints[0].key, "qanoon");
   assert.equal(result.sourceHints[1].key, "ttac");
-  assert.equal(result.telegram.copyReady, true);
-  assert.match(result.telegram.text, /قیمت هر شربت:/);
+  assert.equal("telegram" in result, false);
 });
 
 test("pricingController can return telegram-friendly compact payload", async () => {
