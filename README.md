@@ -1,6 +1,15 @@
-# Pricing App
+# Bale Med Prices
+
+Private repository: `hosseintajdari/Bale-Med-Prices`
 
 Consumer medicine price finder extracted from the observed pricing logic in Qanoon Pharma.
+
+## Quick Start
+
+```powershell
+npm test
+npm run dev:api
+```
 
 ## Goals
 
@@ -16,6 +25,13 @@ Consumer medicine price finder extracted from the observed pricing logic in Qano
 - `apps/web`: frontend shell
 - `packages/domain`: pricing rules and domain types
 - `docs`: product and rule documents
+- `local-inputs/qanoon`: local source materials from Qanoon Pharma, ignored by Git
+
+## Local Inputs
+
+Large or private Qanoon Pharma reference files belong in `local-inputs/`.
+That directory is intentionally ignored by Git. Keep source code, tests, and
+project docs in the tracked workspace folders above.
 
 ## MVP Scope
 

@@ -1,8 +1,7 @@
 {
-  "name": "@pricing-app/api",
+  "name": "@bale-med-prices/api",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "main": "src/server.ts"
 }
-

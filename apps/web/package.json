@@ -1,7 +1,6 @@
 {
-  "name": "@pricing-app/web",
+  "name": "@bale-med-prices/web",
   "private": true,
   "version": "0.1.0",
   "type": "module"
 }
-
