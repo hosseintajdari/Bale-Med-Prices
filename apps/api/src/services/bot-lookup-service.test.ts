@@ -473,6 +473,23 @@ test("botLookupService asks for dosage form when qualifier is explicit but sever
   assert.ok(result.selection.choices.some((choice) => choice.label === "مطمئن نیستم"));
 });
 
+test("botLookupService keeps strength selection price-safe before final resolution", () => {
+  const result = botLookupService.lookup({
+    query: "استامینوفن قرص",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(result.type, "needs_strength_selection");
+  assert.match(result.text, /دوز دارو را انتخاب کنید/);
+  assert.doesNotMatch(result.text, /قیمت/);
+  assert.ok(result.selection.choices.some((choice) => choice.label === "۵۰۰ میلی‌گرم"));
+  assert.ok(result.selection.choices.some((choice) => choice.label === "۳۲۵ میلی‌گرم"));
+  assert.ok(result.items.every((item) => "consumerUnitPrice" in item === false));
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
