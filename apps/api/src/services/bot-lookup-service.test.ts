@@ -334,6 +334,56 @@ test("botLookupService offers refine_search when more than five form choices rem
   assert.match(refined.text, /نام کامل‌تر دارو یا دوز را بفرستید/);
 });
 
+test("botLookupService closes the selection session after final identity resolution", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownChoice = firstStep.selection.choices.find((choice) => choice.label === "مطمئن نیستم");
+  const identityStep = botLookupService.select({
+    sessionId: firstStep.sessionId,
+    choiceId: unknownChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const chosenIdentity = identityStep.selection.choices.find((choice) =>
+    choice.label.includes("۵۰۰ میلی گرم قرص")
+  );
+
+  assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 0);
+
+  const resolved = botLookupService.select({
+    sessionId: identityStep.sessionId,
+    choiceId: chosenIdentity.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(resolved.type, "resolved");
+  assert.equal(resolved.goodId, "g-1006");
+  assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 1);
+
+  const reused = botLookupService.select({
+    sessionId: identityStep.sessionId,
+    choiceId: chosenIdentity.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(reused.type, "expired_selection");
+  assert.match(reused.text, /این جستجو قدیمی شده/);
+  assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 1);
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
