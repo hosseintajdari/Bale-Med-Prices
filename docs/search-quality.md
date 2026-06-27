@@ -69,6 +69,7 @@ Ranking is deterministic and currently prefers:
 
 This means a query such as `استامینوفن شیاف` should rank the suppository result above tablet results, even when all are technically matched.
 It also means a successful patient selection from `اِستـامینوفن` can inform the later plain query `استامینوفن`, because both normalize to the same canonical search text before history is recorded.
+When several `drop` results share the same broad dosage form but differ by route qualifier, the first selection menu should keep those qualifiers visible as separate patient labels such as `قطره چشمی`, `قطره گوشی`, and `قطره بینی`.
 
 ## Next Steps
 

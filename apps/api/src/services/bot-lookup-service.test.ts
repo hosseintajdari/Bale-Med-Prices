@@ -244,6 +244,21 @@ test("botLookupService reuses learned selection history across normalized query 
   assert.equal(plainLookup.selection.choices[0].label, "شیاف");
 });
 
+test("botLookupService separates route qualifiers when the dosage form is shared", () => {
+  const result = botLookupService.lookup({
+    query: "کلرامفنیکل قطره",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(result.type, "needs_form_selection");
+  assert.ok(result.selection.choices.some((choice) => choice.label === "قطره چشمی"));
+  assert.ok(result.selection.choices.some((choice) => choice.label === "قطره گوشی"));
+  assert.ok(result.selection.choices.some((choice) => choice.label === "قطره بینی"));
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
