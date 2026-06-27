@@ -7,8 +7,18 @@ function now() {
   return Date.now();
 }
 
+function defaultTtlMs() {
+  const configured = Number(process.env.SELECTION_SESSION_TTL_MS ?? "");
+
+  if (!Number.isFinite(configured) || configured <= 0) {
+    return DEFAULT_SESSION_TTL_MS;
+  }
+
+  return configured;
+}
+
 export const selectionSessionStore = {
-  create(data, ttlMs = DEFAULT_SESSION_TTL_MS) {
+  create(data, ttlMs = defaultTtlMs()) {
     const id = `sel-${nextSessionNumber++}`;
     sessions.set(id, {
       id,
