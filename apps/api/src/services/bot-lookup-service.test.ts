@@ -384,6 +384,53 @@ test("botLookupService closes the selection session after final identity resolut
   assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 1);
 });
 
+test("botLookupService does not learn from intermediate selection steps before final resolution", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 0);
+
+  const tabletChoice = firstStep.selection.choices.find((choice) => choice.label === "قرص");
+  const strengthStep = botLookupService.select({
+    sessionId: firstStep.sessionId,
+    choiceId: tabletChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(strengthStep.type, "needs_strength_selection");
+  assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 0);
+
+  const unknownFirstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownChoice = unknownFirstStep.selection.choices.find(
+    (choice) => choice.label === "مطمئن نیستم"
+  );
+  const identityStep = botLookupService.select({
+    sessionId: unknownFirstStep.sessionId,
+    choiceId: unknownChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(identityStep.type, "needs_identity_selection");
+  assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 0);
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",

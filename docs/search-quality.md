@@ -74,6 +74,7 @@ If the patient picks the unknown-unit path, the next step should stay identity-f
 Learned selection history should be recorded only when the bot flow has already reached a resolved final price response, including direct single-result lookups, not during intermediate form, strength, or identity steps alone.
 If the first selection layer still has more than five meaningful choices, the compact menu should expose at most five primary choices and then a `جستجوی دقیق‌تر` path instead of deep button pagination.
 Once a selection reaches the final resolved price, its short-lived session should close immediately so repeated callbacks from the same stale button trail return an expired-selection retry message and do not double-count learned history.
+Intermediate selection steps such as choosing a form, moving into strength disambiguation, or entering the unknown-unit identity branch must not update learned selection history on their own; learning waits for the final resolved price response.
 
 ## Next Steps
 
