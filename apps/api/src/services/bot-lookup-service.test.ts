@@ -585,6 +585,29 @@ test("botController select returns expired_selection for stale callbackData afte
   assert.match(stale.body.text, /این جستجو قدیمی شده/);
 });
 
+test("botController select accepts unknown-unit callbackData and keeps identity step price-safe", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownButton = firstStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "مطمئن نیستم");
+
+  const result = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(unknownButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.type, "needs_identity_selection");
+  assert.doesNotMatch(result.body.text, /قیمت/);
+  assert.ok(result.body.selection.choices.every((choice) => choice.label.includes("|")));
+  assert.ok(result.body.items.every((item) => "consumerUnitPrice" in item === false));
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
