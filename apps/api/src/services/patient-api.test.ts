@@ -24,6 +24,24 @@ function invokeGoodsSearchController(url) {
   };
 }
 
+function invokeGoodsGetByIdController(url) {
+  let body = "";
+  const response = {
+    statusCode: 200,
+    setHeader() {},
+    end(value) {
+      body = value;
+    }
+  };
+
+  goodsController.getById({ url }, response);
+
+  return {
+    statusCode: response.statusCode,
+    body: JSON.parse(body)
+  };
+}
+
 async function invokePricingController(url, payload) {
   let body = "";
   const request = Readable.from([Buffer.from(JSON.stringify(payload))]);
@@ -58,6 +76,58 @@ test("goodsService search supports Persian and English aliases", () => {
   assert.equal(persianResult.items[0].persianTitle, "لوزارتان ۵۰ میلی گرم");
 });
 
+test("goodsService search tolerates common patient misspelling in Persian medicine names", () => {
+  const result = goodsService.search({ query: "استامنوفن" });
+
+  assert.ok(result.total >= 1);
+  assert.ok(result.items.some((item) => item.id === "g-1006"));
+});
+
+test("goodsService search accepts Arabic digits in patient-entered strengths", () => {
+  const result = goodsService.search({ query: "استامینوفن ٥٠٠" });
+
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].id, "g-1006");
+});
+
+test("goodsService search accepts strengths joined to medicine names", () => {
+  const result = goodsService.search({ query: "استامینوفن۵۰۰" });
+
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].id, "g-1006");
+});
+
+test("goodsService search accepts punctuation between medicine name and strength", () => {
+  const result = goodsService.search({ query: "استامینوفن-۵۰۰" });
+
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].id, "g-1006");
+});
+
+test("goodsService search ignores Persian diacritics and kashida marks", () => {
+  const result = goodsService.search({ query: "اِستـامینوفن" });
+
+  assert.ok(result.total >= 1);
+  assert.ok(result.items.some((item) => item.id === "g-1006"));
+});
+
+test("goodsService search ranks the requested strength first when several medicines match", () => {
+  const result = goodsService.search({ query: "استامینوفن ۳۲۵" });
+
+  assert.ok(result.total > 1);
+  assert.equal(result.items[0].id, "g-1007");
+});
+
+test("goodsService search tolerates small typos in patient-entered dosage forms", () => {
+  const result = goodsService.search({ query: "استامینوفن قرث" });
+
+  assert.equal(result.total, 2);
+  assert.deepEqual(
+    result.items.map((item) => item.id),
+    ["g-1006", "g-1007"]
+  );
+});
+
 test("goodsController can return telegram-friendly search payload", () => {
   const result = invokeGoodsSearchController("/goods/search?q=vit&format=telegram");
 
@@ -67,6 +137,39 @@ test("goodsController can return telegram-friendly search payload", () => {
   assert.match(result.body.text, /Search: vit/);
   assert.match(result.body.text, /Vitamin D3 1000 IU/);
   assert.equal(result.body.items[0].id, "g-1005");
+});
+
+test("goodsController default search keeps source metadata but hides internal fields", () => {
+  const result = invokeGoodsSearchController("/goods/search?q=los");
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.total, 1);
+  assert.equal(result.body.items[0].id, "g-1003");
+  assert.equal(result.body.items[0].consumerUnitPrice, 96000);
+  assert.equal(result.body.items[0].sources[0].key, "qanoon");
+  assert.equal(result.body.items[0].sources[1].key, "ttac");
+  assert.equal("internalCode" in result.body.items[0], false);
+  assert.equal("barcode" in result.body.items[0], false);
+  assert.equal("genericCode" in result.body.items[0], false);
+  assert.equal("sellPrice" in result.body.items[0], false);
+  assert.equal("tempPrice" in result.body.items[0], false);
+  assert.equal("nonPharma" in result.body.items[0], false);
+});
+
+test("goodsController getById returns patient-safe fields only", () => {
+  const result = invokeGoodsGetByIdController("/goods/g-1003");
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.id, "g-1003");
+  assert.equal(result.body.brand, "Sobhan");
+  assert.equal(result.body.sources[0].key, "qanoon");
+  assert.equal(result.body.sources[1].key, "ttac");
+  assert.equal("internalCode" in result.body, false);
+  assert.equal("barcode" in result.body, false);
+  assert.equal("genericCode" in result.body, false);
+  assert.equal("sellPrice" in result.body, false);
+  assert.equal("tempPrice" in result.body, false);
+  assert.equal("nonPharma" in result.body, false);
 });
 
 test("pricingService returns patient-facing consumer pricing fields", () => {

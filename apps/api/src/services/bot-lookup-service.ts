@@ -1,6 +1,31 @@
 import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { botResponsePresenter } from "./bot-response-presenter.ts";
 import { pricingService } from "./pricing-service.ts";
+import { goodsRepository } from "../repositories/goods-repository.ts";
+
+function buildTtacDetailPlaceholder(selection) {
+  const good = goodsRepository.getById(selection.goodId);
+  const ttacSource = good?.sources?.find((source) => source.key === "ttac");
+  const ttacCode = good?.ttacCode;
+
+  if (!ttacSource || !ttacCode) {
+    return null;
+  }
+
+  return {
+    sourceKey: ttacSource.key,
+    sourceLabel: ttacSource.label,
+    status: "not_loaded",
+    ttacCode,
+    availableActions: [
+      {
+        key: "view_ttac_detail",
+        label: "مشاهده اطلاعات دارو در TTAC",
+        status: "available"
+      }
+    ]
+  };
+}
 
 function calculateResolved(selection, input) {
   const pricing = pricingService.calculate({
@@ -22,7 +47,7 @@ function calculateResolved(selection, input) {
     sourceHints: pricing.sourceHints,
     warnings: pricing.warnings,
     moreInfo: {
-      ttacDetail: null
+      ttacDetail: buildTtacDetailPlaceholder(selection)
     }
   };
 }

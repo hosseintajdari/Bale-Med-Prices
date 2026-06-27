@@ -194,7 +194,19 @@ test("botLookupService resolves a selected strength to unit price", () => {
   assert.equal(result.copyReady, true);
   assert.match(result.text, /Acetaminophen 500mg Tablet/);
   assert.deepEqual(result.moreInfo, {
-    ttacDetail: null
+    ttacDetail: {
+      sourceKey: "ttac",
+      sourceLabel: "TTAC",
+      status: "not_loaded",
+      ttacCode: "TTAC-ACET-500-TAB",
+      availableActions: [
+        {
+          key: "view_ttac_detail",
+          label: "مشاهده اطلاعات دارو در TTAC",
+          status: "available"
+        }
+      ]
+    }
   });
 });
 
