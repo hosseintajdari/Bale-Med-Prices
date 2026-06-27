@@ -30,3 +30,31 @@ test("selectionSessionStore uses configurable default TTL from environment", () 
   fakeNow += 2;
   assert.equal(selectionSessionStore.get(sessionId), null);
 });
+
+test("selectionSessionStore falls back to the 15-minute default when TTL env is invalid", () => {
+  let fakeNow = 1_700_000_000_000;
+  Date.now = () => fakeNow;
+  process.env.SELECTION_SESSION_TTL_MS = "not-a-number";
+
+  const sessionId = selectionSessionStore.create({ query: "acetaminophen" });
+
+  fakeNow += 15 * 60 * 1000 - 1;
+  assert.ok(selectionSessionStore.get(sessionId));
+
+  fakeNow += 2;
+  assert.equal(selectionSessionStore.get(sessionId), null);
+});
+
+test("selectionSessionStore falls back to the 15-minute default when TTL env is non-positive", () => {
+  let fakeNow = 1_700_000_000_000;
+  Date.now = () => fakeNow;
+  process.env.SELECTION_SESSION_TTL_MS = "0";
+
+  const sessionId = selectionSessionStore.create({ query: "acetaminophen" });
+
+  fakeNow += 15 * 60 * 1000 - 1;
+  assert.ok(selectionSessionStore.get(sessionId));
+
+  fakeNow += 2;
+  assert.equal(selectionSessionStore.get(sessionId), null);
+});

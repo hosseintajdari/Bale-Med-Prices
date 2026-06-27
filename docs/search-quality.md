@@ -81,6 +81,7 @@ The same rule applies through Telegram-style callback payloads: button callbacks
 After final medicine resolution, stale Telegram callback payloads from that completed selection trail should still round-trip through the controller as a patient-readable expired-selection response rather than re-running the old selection step.
 Likewise, Telegram callback payloads for the `مطمئن نیستم` branch should round-trip through the controller into the same identity-first, price-safe selection step rather than bypassing the disambiguation flow.
 Selection sessions still default to 15 minutes, but that default lifetime is now configurable through `SELECTION_SESSION_TTL_MS` so deployments can shorten or extend callback validity without changing application code.
+If that environment value is missing, non-numeric, or non-positive, the selection flow should safely fall back to the 15-minute default rather than creating effectively broken sessions.
 If the patient explicitly states a route or site qualifier such as `چشمی` but does not state the dosage form, qualifier-matching results should be narrowed first, then the flow should still ask the patient to choose between the remaining forms such as ophthalmic drop versus ophthalmic ointment.
 When dosage form is clear but multiple strengths remain, the strength-disambiguation step should stay price-safe: show strength choices only, keep pricing hidden, and wait for the final resolved medicine before exposing consumer price.
 
