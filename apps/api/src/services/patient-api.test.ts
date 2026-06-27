@@ -104,6 +104,13 @@ test("goodsService search accepts punctuation between medicine name and strength
   assert.equal(result.items[0].id, "g-1006");
 });
 
+test("goodsService search accepts joined Persian strength units", () => {
+  const result = goodsService.search({ query: "استامینوفن ۵۰۰میلیگرم" });
+
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].id, "g-1006");
+});
+
 test("goodsService search ignores Persian diacritics and kashida marks", () => {
   const result = goodsService.search({ query: "اِستـامینوفن" });
 

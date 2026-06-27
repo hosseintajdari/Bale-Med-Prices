@@ -47,6 +47,8 @@ function normalizeText(value) {
     .replace(/[يى]/g, "ی")
     .replace(/ك/g, "ک")
     .replace(/[‌\u200c]/g, " ")
+    .replace(/میلی\s*گرم/g, "mg")
+    .replace(/milligrams?/g, "mg")
     .replace(/\s+/g, " ");
 }
 
