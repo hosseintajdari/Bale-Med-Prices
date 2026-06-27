@@ -458,6 +458,21 @@ test("botLookupService keeps unknown-unit crowded identity selection compact and
   assert.ok(identityStep.items.every((item) => "consumerUnitPrice" in item === false));
 });
 
+test("botLookupService asks for dosage form when qualifier is explicit but several forms share it", () => {
+  const result = botLookupService.lookup({
+    query: "کلرامفنیکل چشمی",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(result.type, "needs_form_selection");
+  assert.ok(result.selection.choices.some((choice) => choice.label === "قطره چشمی"));
+  assert.ok(result.selection.choices.some((choice) => choice.label === "پماد چشمی"));
+  assert.ok(result.selection.choices.some((choice) => choice.label === "مطمئن نیستم"));
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",

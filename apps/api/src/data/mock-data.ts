@@ -271,6 +271,36 @@ export const goods: Good[] = [
     ]
   },
   {
+    id: "g-1018",
+    internalCode: "INT-1018",
+    barcode: "6261001100189",
+    genericCode: "GEN-CHLOR-OINT-OPH",
+    title: "Chloramphenicol Eye Ointment 1%",
+    persianTitle: "کلرامفنیکل ۱٪ پماد چشمی",
+    englishTitle: "Chloramphenicol Eye Ointment 1%",
+    aliases: ["chloramphenicol", "chloramphenicol eye", "کلرامفنیکل", "پماد کلرامفنیکل"],
+    brand: "Sina Darou",
+    sellPrice: 97000,
+    tempPrice: 0,
+    taxCodes: ["TAX_MED_REDUCED"],
+    nonPharma: false,
+    countInPackage: 1,
+    unitLabel: "tube",
+    packLabel: "single tube",
+    dosageForm: "ointment",
+    routeQualifier: "ophthalmic",
+    strengthLabel: "۱٪",
+    patientFormLabel: "پماد چشمی",
+    packageDescription: "یک تیوب",
+    activeStatus: "active",
+    ttacCode: "TTAC-CHLOR-OINT-OPH",
+    sources: [
+      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
+      { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
+    ]
+  },
+  {
     id: "g-1010",
     internalCode: "INT-1010",
     barcode: "6261001100103",

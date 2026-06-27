@@ -76,6 +76,7 @@ If the first selection layer still has more than five meaningful choices, the co
 Once a selection reaches the final resolved price, its short-lived session should close immediately so repeated callbacks from the same stale button trail return an expired-selection retry message and do not double-count learned history.
 Intermediate selection steps such as choosing a form, moving into strength disambiguation, or entering the unknown-unit identity branch must not update learned selection history on their own; learning waits for the final resolved price response.
 The same compact-choice rule applies after entering the unknown-unit identity branch: if identity-safe options still exceed five, show up to five choices plus `جستجوی دقیق‌تر` rather than silently truncating the identity menu.
+If the patient explicitly states a route or site qualifier such as `چشمی` but does not state the dosage form, qualifier-matching results should be narrowed first, then the flow should still ask the patient to choose between the remaining forms such as ophthalmic drop versus ophthalmic ointment.
 
 ## Next Steps
 
