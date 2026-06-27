@@ -259,6 +259,34 @@ test("botLookupService separates route qualifiers when the dosage form is shared
   assert.ok(result.selection.choices.some((choice) => choice.label === "قطره بینی"));
 });
 
+test("botLookupService unknown-unit path keeps identity cues and hides price before resolution", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownChoice = firstStep.selection.choices.find((choice) => choice.label === "مطمئن نیستم");
+
+  const result = botLookupService.select({
+    sessionId: firstStep.sessionId,
+    choiceId: unknownChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(result.type, "needs_identity_selection");
+  assert.match(result.text, /داروی مورد نظر را انتخاب کنید/);
+  assert.doesNotMatch(result.text, /قیمت/);
+  assert.ok(result.selection.choices.every((choice) => choice.label.includes("|")));
+  assert.ok(result.selection.choices.every((choice) => choice.description));
+  assert.ok(result.items.every((item) => "consumerUnitPrice" in item === false));
+  assert.ok(result.items.some((item) => item.packageDescription));
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
