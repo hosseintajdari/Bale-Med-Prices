@@ -551,6 +551,40 @@ test("botController select accepts refine callbackData inside unknown identity f
   assert.match(result.body.text, /نام کامل‌تر دارو یا دوز را بفرستید/);
 });
 
+test("botController select returns expired_selection for stale callbackData after final resolution", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const tabletButton = firstStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "قرص");
+  const strengthStep = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(tabletButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  ).body;
+  const strengthButton = strengthStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "۵۰۰ میلی‌گرم");
+
+  const resolved = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(strengthButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(resolved.statusCode, 200);
+  assert.equal(resolved.body.type, "resolved");
+
+  const stale = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(strengthButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(stale.statusCode, 200);
+  assert.equal(stale.body.type, "expired_selection");
+  assert.match(stale.body.text, /این جستجو قدیمی شده/);
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
