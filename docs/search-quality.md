@@ -64,9 +64,11 @@ Ranking is deterministic and currently prefers:
 - explicit query matches for dosage form and route qualifier
 - explicit strength alignment
 - active medicines
+- learned selection history keyed by normalized query text
 - records with clearer patient-facing medicine detail
 
 This means a query such as `استامینوفن شیاف` should rank the suppository result above tablet results, even when all are technically matched.
+It also means a successful patient selection from `اِستـامینوفن` can inform the later plain query `استامینوفن`, because both normalize to the same canonical search text before history is recorded.
 
 ## Next Steps
 

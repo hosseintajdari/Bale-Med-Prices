@@ -1,7 +1,6 @@
 import { goods } from "../data/mock-data.ts";
+import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
 
-const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
-const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 const DOSAGE_FORM_TOKENS = new Set([
   "قرص",
   "کپسول",
@@ -43,45 +42,12 @@ const QUALIFIER_ALIASES = new Map([
   ["sublingual", ["sublingual", "زیرزبانی", "زیر زبانی"]]
 ]);
 
-function normalizeDigits(value) {
-  return value.replace(/[۰-۹٠-٩]/g, (digit) => {
-    const persianIndex = PERSIAN_DIGITS.indexOf(digit);
-    if (persianIndex >= 0) {
-      return String(persianIndex);
-    }
-
-    return String(ARABIC_DIGITS.indexOf(digit));
-  });
-}
-
-function normalizeText(value) {
-  return normalizeDigits(String(value ?? ""))
-    .trim()
-    .toLowerCase()
-    .replace(/[\u064b-\u065f\u0670\u0640]/g, "")
-    .replace(/[\/\\|,;:_+()[\]{}<>]/g, " ")
-    .replace(/(?<=\p{L})[-.](?=\d)/gu, " ")
-    .replace(/(?<=\d)[-.](?=\p{L})/gu, " ")
-    .replace(/(\p{L})(\d)/gu, "$1 $2")
-    .replace(/(\d)(\p{L})/gu, "$1 $2")
-    .replace(/[يى]/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[‌\u200c]/g, " ")
-    .replace(/میلی\s*گرم/g, "mg")
-    .replace(/م\s*\.?\s*گ/g, "mg")
-    .replace(/milligrams?/g, "mg")
-    .replace(/\s+/g, " ");
-}
-
 function tokenize(term) {
-  return normalizeText(term)
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
+  return tokenizeSearchText(term);
 }
 
 function includesAny(query, values) {
-  return values.some((value) => query.includes(normalizeText(value)));
+  return values.some((value) => query.includes(normalizeSearchText(value)));
 }
 
 function findExplicitKeys(query, aliases) {
@@ -137,7 +103,7 @@ function scoreFieldMatches(term, tokens, value, weight) {
     return 0;
   }
 
-  const normalizedValue = normalizeText(value);
+  const normalizedValue = normalizeSearchText(value);
   if (!normalizedValue) {
     return 0;
   }
@@ -205,7 +171,7 @@ function scoreGood(term, tokens, good) {
 
 export const goodsRepository = {
   search(input) {
-    const term = normalizeText(input?.query ?? "");
+    const term = normalizeSearchText(input?.query ?? "");
     const tokens = tokenize(term);
 
     if (!term) {
@@ -232,7 +198,7 @@ export const goodsRepository = {
           ...good.aliases
         ].filter(Boolean);
 
-        const searchableTerms = haystacks.map((value) => normalizeText(value));
+        const searchableTerms = haystacks.map((value) => normalizeSearchText(value));
         return tokens.every((token) =>
           searchableTerms.some((candidate) =>
             candidate

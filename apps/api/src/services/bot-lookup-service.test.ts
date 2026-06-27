@@ -210,6 +210,40 @@ test("botLookupService resolves a selected strength to unit price", () => {
   });
 });
 
+test("botLookupService reuses learned selection history across normalized query variants", () => {
+  const noisyLookup = botLookupService.lookup({
+    query: "اِستـامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const suppositoryChoice = noisyLookup.selection.choices.find((choice) => choice.label === "شیاف");
+
+  const resolved = botLookupService.select({
+    sessionId: noisyLookup.sessionId,
+    choiceId: suppositoryChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(resolved.type, "resolved");
+  assert.equal(resolved.goodId, "g-1008");
+
+  const plainLookup = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(plainLookup.type, "needs_form_selection");
+  assert.equal(plainLookup.selection.choices[0].label, "شیاف");
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",

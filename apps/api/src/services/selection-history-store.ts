@@ -1,7 +1,9 @@
+import { normalizeSearchText } from "../search/search-normalization.ts";
+
 const counts = new Map();
 
 function keyFor(query, goodId) {
-  return `${query.trim().toLowerCase()}::${goodId}`;
+  return `${normalizeSearchText(query)}::${goodId}`;
 }
 
 export const selectionHistoryStore = {
