@@ -524,6 +524,33 @@ test("botLookupService refine callback works inside unknown-unit crowded identit
   assert.match(refined.text, /نام کامل‌تر دارو یا دوز را بفرستید/);
 });
 
+test("botController select accepts refine callbackData inside unknown identity flow", () => {
+  const firstStep = botLookupService.lookup({
+    query: "ایبوپروفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownButton = firstStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "مطمئن نیستم");
+  const identityStep = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(unknownButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  ).body;
+  const refineButton = identityStep.telegram.replyMarkup.inline_keyboard
+    .flat()
+    .find((button) => button.text === "جستجوی دقیق‌تر");
+
+  const result = invokeSelectController(
+    `/bot/select?callbackData=${encodeURIComponent(refineButton.callback_data)}&documentDate=2026-06-24&quantity=1&warehouseId=main&includeTechnicalFee=on`
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.type, "refine_search");
+  assert.match(result.body.text, /نام کامل‌تر دارو یا دوز را بفرستید/);
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
