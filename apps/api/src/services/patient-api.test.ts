@@ -76,82 +76,93 @@ test("goodsService search supports Persian and English aliases", () => {
   assert.equal(persianResult.items[0].persianTitle, "لوزارتان ۵۰ میلی گرم");
 });
 
-test("goodsService search tolerates common patient misspelling in Persian medicine names", () => {
-  const result = goodsService.search({ query: "استامنوفن" });
+const patientSearchQualityCases = [
+  {
+    name: "common Persian misspelling",
+    query: "استامنوفن",
+    expectedIds: ["g-1006"]
+  },
+  {
+    name: "Arabic digits in strength",
+    query: "استامینوفن ٥٠٠",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "strength joined to medicine name",
+    query: "استامینوفن۵۰۰",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "punctuation between medicine and strength",
+    query: "استامینوفن-۵۰۰",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "joined Persian strength unit",
+    query: "استامینوفن ۵۰۰میلیگرم",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "abbreviated Persian strength unit",
+    query: "استامینوفن 500مگ",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "English strength unit with Persian name",
+    query: "استامینوفن 500mg",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "Arabic alef variant",
+    query: "آستامینوفن",
+    expectedIds: ["g-1006"]
+  },
+  {
+    name: "extra spaces inside medicine name",
+    query: "استا مینو فن ۵۰۰",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "Persian multiplier word in strength",
+    query: "ویتامین د ۳ هزار",
+    expectedFirstId: "g-1005",
+    expectedTotal: 1
+  },
+  {
+    name: "Persian diacritics and kashida marks",
+    query: "اِستـامینوفن",
+    expectedIds: ["g-1006"]
+  }
+];
 
-  assert.ok(result.total >= 1);
-  assert.ok(result.items.some((item) => item.id === "g-1006"));
-});
+for (const searchCase of patientSearchQualityCases) {
+  test(`goodsService search handles patient input: ${searchCase.name}`, () => {
+    const result = goodsService.search({ query: searchCase.query });
 
-test("goodsService search accepts Arabic digits in patient-entered strengths", () => {
-  const result = goodsService.search({ query: "استامینوفن ٥٠٠" });
+    if (searchCase.expectedTotal != null) {
+      assert.equal(result.total, searchCase.expectedTotal);
+    } else {
+      assert.ok(result.total >= searchCase.expectedIds.length);
+    }
 
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
+    if (searchCase.expectedFirstId) {
+      assert.equal(result.items[0].id, searchCase.expectedFirstId);
+    }
 
-test("goodsService search accepts strengths joined to medicine names", () => {
-  const result = goodsService.search({ query: "استامینوفن۵۰۰" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
-
-test("goodsService search accepts punctuation between medicine name and strength", () => {
-  const result = goodsService.search({ query: "استامینوفن-۵۰۰" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
-
-test("goodsService search accepts joined Persian strength units", () => {
-  const result = goodsService.search({ query: "استامینوفن ۵۰۰میلیگرم" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
-
-test("goodsService search accepts abbreviated Persian strength units", () => {
-  const result = goodsService.search({ query: "استامینوفن 500مگ" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
-
-test("goodsService search accepts English strength units for Persian medicine names", () => {
-  const result = goodsService.search({ query: "استامینوفن 500mg" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
-
-test("goodsService search accepts Arabic alef variants in Persian medicine names", () => {
-  const result = goodsService.search({ query: "آستامینوفن" });
-
-  assert.ok(result.total >= 1);
-  assert.ok(result.items.some((item) => item.id === "g-1006"));
-});
-
-test("goodsService search accepts extra spaces inside Persian medicine names", () => {
-  const result = goodsService.search({ query: "استا مینو فن ۵۰۰" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1006");
-});
-
-test("goodsService search understands Persian multiplier words in strengths", () => {
-  const result = goodsService.search({ query: "ویتامین د ۳ هزار" });
-
-  assert.equal(result.total, 1);
-  assert.equal(result.items[0].id, "g-1005");
-});
-
-test("goodsService search ignores Persian diacritics and kashida marks", () => {
-  const result = goodsService.search({ query: "اِستـامینوفن" });
-
-  assert.ok(result.total >= 1);
-  assert.ok(result.items.some((item) => item.id === "g-1006"));
-});
+    if (searchCase.expectedIds) {
+      for (const expectedId of searchCase.expectedIds) {
+        assert.ok(result.items.some((item) => item.id === expectedId));
+      }
+    }
+  });
+}
 
 test("goodsService search ranks the requested strength first when several medicines match", () => {
   const result = goodsService.search({ query: "استامینوفن ۳۲۵" });
