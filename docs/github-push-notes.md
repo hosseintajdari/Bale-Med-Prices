@@ -8,8 +8,9 @@ Local commits prepared after the last known pushed commit:
 
 - `35c15a1 Improve patient medicine search tolerance`
 - `64a00c8 Normalize patient-entered strength units`
-
-The next commit after this note should include the search quality suite expansion.
+- `3c5522b Expand patient search quality coverage`
+- `932e5f6 Make patient search quality tests data driven`
+- `819714b Add patient search punctuation coverage`
 
 ## Verification
 
@@ -21,7 +22,7 @@ npm test
 
 Latest local result:
 
-- 30 tests passed
+- 34 tests passed
 - 0 tests failed
 
 ## Why GitHub push is pending

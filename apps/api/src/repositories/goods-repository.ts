@@ -22,6 +22,26 @@ const DOSAGE_FORM_TOKENS = new Set([
   "suppository",
   "injection"
 ]);
+const FORM_ALIASES = new Map([
+  ["tablet", ["tablet", "tab", "قرص"]],
+  ["capsule", ["capsule", "cap", "کپسول"]],
+  ["softgel", ["softgel", "سافت ژل", "سافت‌ژل"]],
+  ["syrup", ["syrup", "شربت"]],
+  ["drop", ["drop", "drops", "قطره"]],
+  ["ointment", ["ointment", "پماد"]],
+  ["cream", ["cream", "کرم"]],
+  ["suppository", ["suppository", "supp", "شیاف"]],
+  ["injection", ["injection", "ampule", "ampoule", "آمپول", "تزریقی"]]
+]);
+const QUALIFIER_ALIASES = new Map([
+  ["ophthalmic", ["ophthalmic", "eye", "چشمی"]],
+  ["otic", ["otic", "ear", "گوشی"]],
+  ["nasal", ["nasal", "nose", "بینی"]],
+  ["oral", ["oral", "خوراکی"]],
+  ["rectal", ["rectal", "رکتال", "مقعدی"]],
+  ["topical", ["topical", "پوستی", "موضعی"]],
+  ["sublingual", ["sublingual", "زیرزبانی", "زیر زبانی"]]
+]);
 
 function normalizeDigits(value) {
   return value.replace(/[۰-۹٠-٩]/g, (digit) => {
@@ -58,6 +78,16 @@ function tokenize(term) {
     .split(/\s+/)
     .map((token) => token.trim())
     .filter(Boolean);
+}
+
+function includesAny(query, values) {
+  return values.some((value) => query.includes(normalizeText(value)));
+}
+
+function findExplicitKeys(query, aliases) {
+  return [...aliases.entries()]
+    .filter(([, values]) => includesAny(query, values))
+    .map(([key]) => key);
 }
 
 function levenshteinDistance(left, right) {
@@ -102,6 +132,77 @@ function fuzzyTokenMatch(token, candidate) {
   return levenshteinDistance(token, candidate) <= 1;
 }
 
+function scoreFieldMatches(term, tokens, value, weight) {
+  if (!value) {
+    return 0;
+  }
+
+  const normalizedValue = normalizeText(value);
+  if (!normalizedValue) {
+    return 0;
+  }
+
+  let score = 0;
+
+  if (normalizedValue === term) {
+    score += weight * 6;
+  } else if (normalizedValue.startsWith(term)) {
+    score += weight * 4;
+  } else if (normalizedValue.includes(term)) {
+    score += weight * 2;
+  }
+
+  const candidateTokens = tokenize(normalizedValue);
+  for (const token of tokens) {
+    if (candidateTokens.includes(token)) {
+      score += weight;
+    }
+  }
+
+  return score;
+}
+
+function scoreGood(term, tokens, good) {
+  const explicitFormKeys = findExplicitKeys(term, FORM_ALIASES);
+  const explicitQualifierKeys = findExplicitKeys(term, QUALIFIER_ALIASES);
+  let score = 0;
+
+  score += scoreFieldMatches(term, tokens, good.persianTitle, 12);
+  score += scoreFieldMatches(term, tokens, good.englishTitle, 11);
+  score += scoreFieldMatches(term, tokens, good.title, 10);
+  score += scoreFieldMatches(term, tokens, good.strengthLabel, 8);
+  score += scoreFieldMatches(term, tokens, good.patientFormLabel, 7);
+  score += scoreFieldMatches(term, tokens, good.dosageForm, 6);
+  score += scoreFieldMatches(term, tokens, good.routeQualifier, 5);
+  score += scoreFieldMatches(term, tokens, good.packageDescription, 4);
+
+  for (const alias of good.aliases ?? []) {
+    score += scoreFieldMatches(term, tokens, alias, 9);
+  }
+
+  if (explicitFormKeys.includes(good.dosageForm ?? good.unitLabel ?? "")) {
+    score += 120;
+  }
+
+  if (explicitQualifierKeys.includes(good.routeQualifier ?? "")) {
+    score += 90;
+  }
+
+  if (good.activeStatus === "active") {
+    score += 20;
+  }
+
+  if (good.strengthLabel) {
+    score += 5;
+  }
+
+  if (good.packageDescription || good.packLabel) {
+    score += 3;
+  }
+
+  return score;
+}
+
 export const goodsRepository = {
   search(input) {
     const term = normalizeText(input?.query ?? "");
@@ -111,35 +212,37 @@ export const goodsRepository = {
       return goods.slice(0, 20);
     }
 
-    return goods.filter((good) => {
-      const haystacks = [
-        good.id,
-        good.internalCode,
-        good.barcode,
-        good.genericCode,
-        good.title,
-        good.brand,
-        good.persianTitle,
-        good.englishTitle,
-        good.dosageForm,
-        good.routeQualifier,
-        good.strengthLabel,
-        good.patientFormLabel,
-        good.packageDescription,
-        good.activeStatus,
-        ...good.aliases
-      ].filter(Boolean);
+    return goods
+      .filter((good) => {
+        const haystacks = [
+          good.id,
+          good.internalCode,
+          good.barcode,
+          good.genericCode,
+          good.title,
+          good.brand,
+          good.persianTitle,
+          good.englishTitle,
+          good.dosageForm,
+          good.routeQualifier,
+          good.strengthLabel,
+          good.patientFormLabel,
+          good.packageDescription,
+          good.activeStatus,
+          ...good.aliases
+        ].filter(Boolean);
 
-      const searchableTerms = haystacks.map((value) => normalizeText(value));
-      return tokens.every((token) =>
-        searchableTerms.some((candidate) =>
-          candidate
-            .split(/\s+/)
-            .some((candidateToken) => fuzzyTokenMatch(token, candidateToken)) ||
-          fuzzyTokenMatch(token, candidate)
-        )
-      );
-    });
+        const searchableTerms = haystacks.map((value) => normalizeText(value));
+        return tokens.every((token) =>
+          searchableTerms.some((candidate) =>
+            candidate
+              .split(/\s+/)
+              .some((candidateToken) => fuzzyTokenMatch(token, candidateToken)) ||
+            fuzzyTokenMatch(token, candidate)
+          )
+        );
+      })
+      .sort((left, right) => scoreGood(term, tokens, right) - scoreGood(term, tokens, left));
   },
 
   getById(id) {
