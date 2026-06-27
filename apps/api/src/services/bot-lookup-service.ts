@@ -1,6 +1,7 @@
 import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { botResponsePresenter } from "./bot-response-presenter.ts";
 import { pricingService } from "./pricing-service.ts";
+import { selectionHistoryStore } from "./selection-history-store.ts";
 import { goodsRepository } from "../repositories/goods-repository.ts";
 
 function buildTtacDetailPlaceholder(selection) {
@@ -36,6 +37,7 @@ function calculateResolved(selection, input) {
     includeTechnicalFee: Boolean(input.includeTechnicalFee)
   });
   const presentation = botResponsePresenter.pricing(pricing);
+  selectionHistoryStore.recordSuccessfulSelection(selection.query, selection.goodId);
 
   return {
     type: "resolved",

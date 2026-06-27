@@ -281,7 +281,6 @@ function finalizeSelectionIfResolved(result, sessionId) {
   }
 
   selectionSessionStore.close(sessionId);
-  selectionHistoryStore.recordSuccessfulSelection(result.query, result.goodId);
   return result;
 }
 
@@ -357,7 +356,6 @@ export const medicineSelectionService = {
       }
 
       selectionSessionStore.close(input.sessionId);
-      selectionHistoryStore.recordSuccessfulSelection(query, goodId);
 
       return {
         type: "resolved",

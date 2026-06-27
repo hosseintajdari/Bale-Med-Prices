@@ -244,6 +244,23 @@ test("botLookupService reuses learned selection history across normalized query 
   assert.equal(plainLookup.selection.choices[0].label, "شیاف");
 });
 
+test("botLookupService learns from direct resolved lookups after final price is shown", () => {
+  assert.equal(selectionHistoryStore.getSelectionCount("لوزارتان", "g-1003"), 0);
+
+  const directResolved = botLookupService.lookup({
+    query: "لوزارتان",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(directResolved.type, "resolved");
+  assert.equal(directResolved.goodId, "g-1003");
+  assert.match(directResolved.text, /قیمت/);
+  assert.equal(selectionHistoryStore.getSelectionCount("لوزارتان", "g-1003"), 1);
+});
+
 test("botLookupService separates route qualifiers when the dosage form is shared", () => {
   const result = botLookupService.lookup({
     query: "کلرامفنیکل قطره",

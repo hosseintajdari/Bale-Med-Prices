@@ -71,6 +71,7 @@ This means a query such as `استامینوفن شیاف` should rank the suppo
 It also means a successful patient selection from `اِستـامینوفن` can inform the later plain query `استامینوفن`, because both normalize to the same canonical search text before history is recorded.
 When several `drop` results share the same broad dosage form but differ by route qualifier, the first selection menu should keep those qualifiers visible as separate patient labels such as `قطره چشمی`, `قطره گوشی`, and `قطره بینی`.
 If the patient picks the unknown-unit path, the next step should stay identity-first: visible name, form, strength, and package cues remain available, while price stays hidden until a final medicine is resolved.
+Learned selection history should be recorded only when the bot flow has already reached a resolved final price response, including direct single-result lookups, not during intermediate form, strength, or identity steps alone.
 
 ## Next Steps
 
