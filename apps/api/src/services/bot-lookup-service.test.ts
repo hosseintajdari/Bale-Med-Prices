@@ -490,6 +490,40 @@ test("botLookupService keeps strength selection price-safe before final resoluti
   assert.ok(result.items.every((item) => "consumerUnitPrice" in item === false));
 });
 
+test("botLookupService refine callback works inside unknown-unit crowded identity selection", () => {
+  const firstStep = botLookupService.lookup({
+    query: "ایبوپروفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownChoice = firstStep.selection.choices.find((choice) => choice.label === "مطمئن نیستم");
+  const identityStep = botLookupService.select({
+    sessionId: firstStep.sessionId,
+    choiceId: unknownChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const refineChoice = identityStep.selection.choices.find(
+    (choice) => choice.label === "جستجوی دقیق‌تر"
+  );
+
+  const refined = botLookupService.select({
+    sessionId: identityStep.sessionId,
+    choiceId: refineChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(refined.type, "refine_search");
+  assert.match(refined.text, /نام کامل‌تر دارو یا دوز را بفرستید/);
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",
