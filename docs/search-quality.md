@@ -75,6 +75,7 @@ Learned selection history should be recorded only when the bot flow has already 
 If the first selection layer still has more than five meaningful choices, the compact menu should expose at most five primary choices and then a `جستجوی دقیق‌تر` path instead of deep button pagination.
 Once a selection reaches the final resolved price, its short-lived session should close immediately so repeated callbacks from the same stale button trail return an expired-selection retry message and do not double-count learned history.
 Intermediate selection steps such as choosing a form, moving into strength disambiguation, or entering the unknown-unit identity branch must not update learned selection history on their own; learning waits for the final resolved price response.
+The same compact-choice rule applies after entering the unknown-unit identity branch: if identity-safe options still exceed five, show up to five choices plus `جستجوی دقیق‌تر` rather than silently truncating the identity menu.
 
 ## Next Steps
 

@@ -431,6 +431,33 @@ test("botLookupService does not learn from intermediate selection steps before f
   assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 0);
 });
 
+test("botLookupService keeps unknown-unit crowded identity selection compact and price-safe", () => {
+  const firstStep = botLookupService.lookup({
+    query: "ایبوپروفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const unknownChoice = firstStep.selection.choices.find((choice) => choice.label === "مطمئن نیستم");
+
+  const identityStep = botLookupService.select({
+    sessionId: firstStep.sessionId,
+    choiceId: unknownChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(identityStep.type, "needs_identity_selection");
+  assert.ok(identityStep.selection.choices.some((choice) => choice.label === "جستجوی دقیق‌تر"));
+  assert.equal(identityStep.selection.choices.length, 6);
+  assert.doesNotMatch(identityStep.text, /قیمت/);
+  assert.ok(identityStep.selection.choices.some((choice) => choice.label.includes("|")));
+  assert.ok(identityStep.items.every((item) => "consumerUnitPrice" in item === false));
+});
+
 test("botLookupService returns not_found for missing match", () => {
   const result = botLookupService.lookup({
     query: "zzzz-not-found",

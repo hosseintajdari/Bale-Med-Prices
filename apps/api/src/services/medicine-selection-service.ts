@@ -202,7 +202,7 @@ function createStrengthSelection(query, items) {
 
 function createIdentitySelection(query, items) {
   const sessionId = selectionSessionStore.create({ query, items });
-  const identityChoices = items.slice(0, 5).map((item) => ({
+  const identityChoices = items.map((item) => ({
     id: `good:${item.id}`,
     label: optionLabelFor(item),
     description: item.packageDescription ?? item.packLabel ?? "انتخاب دارو",
