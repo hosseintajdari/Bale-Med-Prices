@@ -139,6 +139,30 @@ const patientSearchQualityCases = [
     name: "Persian diacritics and kashida marks",
     query: "اِستـامینوفن",
     expectedIds: ["g-1006"]
+  },
+  {
+    name: "dot between strength and unit",
+    query: "استامینوفن 500.mg",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "parenthesized strength",
+    query: "استامینوفن (۵۰۰)",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "slash between medicine and strength",
+    query: "استامینوفن/۵۰۰",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
+  },
+  {
+    name: "English medicine with joined strength",
+    query: "acetaminophen500",
+    expectedFirstId: "g-1006",
+    expectedTotal: 1
   }
 ];
 
