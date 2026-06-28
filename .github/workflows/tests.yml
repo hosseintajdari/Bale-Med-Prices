@@ -1,15 +1,8 @@
-name: CI
+name: Tests
 
 on:
   push:
-    branches:
-      - main
-      - "feature/**"
-      - "fix/**"
-      - "docs/**"
-      - "test/**"
   pull_request:
-  workflow_dispatch:
 
 jobs:
   test:
