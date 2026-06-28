@@ -334,6 +334,29 @@ test("botLookupService offers refine_search when more than five form choices rem
   assert.match(refined.text, /نام کامل‌تر دارو یا دوز را بفرستید/);
 });
 
+test("botLookupService keeps the first form menu limited to five primary choices", () => {
+  const firstStep = botLookupService.lookup({
+    query: "ایبوپروفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(firstStep.type, "needs_form_selection");
+
+  const primaryChoices = firstStep.selection.choices.filter(
+    (choice) => choice.label !== "جستجوی دقیق‌تر" && choice.label !== "مطمئن نیستم"
+  );
+
+  assert.equal(primaryChoices.length, 5);
+  assert.equal(firstStep.selection.choices.length, 7);
+  assert.equal(firstStep.items.length, 5);
+  assert.ok(firstStep.total > firstStep.items.length);
+  assert.ok(firstStep.selection.choices.some((choice) => choice.label === "جستجوی دقیق‌تر"));
+  assert.ok(firstStep.selection.choices.some((choice) => choice.label === "مطمئن نیستم"));
+});
+
 test("botLookupService closes the selection session after final identity resolution", () => {
   const firstStep = botLookupService.lookup({
     query: "استامینوفن",
@@ -429,6 +452,77 @@ test("botLookupService does not learn from intermediate selection steps before f
 
   assert.equal(identityStep.type, "needs_identity_selection");
   assert.equal(selectionHistoryStore.getSelectionCount("استامینوفن", "g-1006"), 0);
+});
+
+test("botLookupService orders unknown-unit identity choices by accumulated successful selections", () => {
+  const chooseUnknownIdentity = (identityLabelFragment) => {
+    const firstStep = botLookupService.lookup({
+      query: "استامینوفن",
+      documentDate: "2026-06-24",
+      quantity: 1,
+      warehouseId: "main",
+      includeTechnicalFee: true
+    });
+    const identityStep = botLookupService.select({
+      sessionId: firstStep.sessionId,
+      choiceId: "unknown",
+      documentDate: "2026-06-24",
+      quantity: 1,
+      warehouseId: "main",
+      includeTechnicalFee: true
+    });
+    const chosenIdentity = identityStep.selection.choices.find((choice) =>
+      choice.label.includes(identityLabelFragment)
+    );
+
+    return botLookupService.select({
+      sessionId: identityStep.sessionId,
+      choiceId: chosenIdentity.id,
+      documentDate: "2026-06-24",
+      quantity: 1,
+      warehouseId: "main",
+      includeTechnicalFee: true
+    });
+  };
+
+  assert.equal(
+    chooseUnknownIdentity("شیاف").goodId,
+    "g-1008"
+  );
+  assert.equal(
+    chooseUnknownIdentity("۵۰۰ میلی گرم قرص").goodId,
+    "g-1006"
+  );
+  assert.equal(
+    chooseUnknownIdentity("۵۰۰ میلی گرم قرص").goodId,
+    "g-1006"
+  );
+
+  const rankedLookup = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const identityStep = botLookupService.select({
+    sessionId: rankedLookup.sessionId,
+    choiceId: "unknown",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(identityStep.type, "needs_identity_selection");
+  assert.equal(
+    identityStep.selection.choices[0].label.includes("۵۰۰ میلی گرم قرص"),
+    true
+  );
+  assert.equal(
+    identityStep.selection.choices[1].label.includes("شیاف"),
+    true
+  );
 });
 
 test("botLookupService keeps unknown-unit crowded identity selection compact and price-safe", () => {
