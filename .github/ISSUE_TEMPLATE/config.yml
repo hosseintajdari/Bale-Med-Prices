@@ -1,1 +1,5 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
+contact_links:
+  - name: Security reporting
+    url: https://github.com/hosseintajdari/Bale-Med-Prices/security
+    about: Use a private security channel or contact the repository owner directly for sensitive reports.

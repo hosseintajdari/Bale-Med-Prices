@@ -15,6 +15,7 @@ npm test
 
 - Keep patient-facing behavior covered by tests.
 - Run `npm test` before pushing.
+- Prefer one logical change per branch and per pull request.
 - Keep private reference files in `local-inputs/`; never commit that folder.
 - Do not commit secrets, `.env` files, generated output, or local Codex state.
 - Put shared pricing rules in `packages/domain`.
@@ -38,3 +39,6 @@ Each PR should include:
 - why it changed
 - tests run
 - any known limitations
+
+Keep PRs small enough that a reviewer can understand the behavior change
+without reconstructing unrelated context.

@@ -8,9 +8,11 @@ assignees: ""
 
 ## Problem
 
+Describe the patient-facing or engineering behavior that is broken.
 
 ## Expected Behavior
 
+Describe the expected result.
 
 ## Steps To Reproduce
 
@@ -18,6 +20,15 @@ assignees: ""
 2.
 3.
 
+## Environment
+
+- branch:
+- commit:
+- area:
+
+## Validation
+
+- test coverage exists:
+- logs or screenshots available:
+
 ## Notes
-
-

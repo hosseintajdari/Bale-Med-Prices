@@ -1,11 +1,18 @@
 ## Summary
 
-- 
+- what changed
+- why it changed
 
 ## Validation
 
 - [ ] `npm test`
 
-## Notes
+## Risks
 
-- 
+- patient-facing behavior affected:
+- known limitations:
+
+## Related
+
+- issue:
+- docs:
