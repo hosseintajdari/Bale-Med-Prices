@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.github
+local-inputs
+.codex
+.cursor/tmp
+.env
+.env.*
+!.env.telegram.example
+*.log
+output
+coverage
+dist
+build

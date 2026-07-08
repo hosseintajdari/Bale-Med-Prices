@@ -28,6 +28,8 @@ Local folder name may be `BaleMedPrices`.
 ```powershell
 npm test
 npm run dev:api
+npm run dev:telegram-bot
+docker compose up --build
 ```
 
 ## Cursor Cloud specific instructions
