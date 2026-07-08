@@ -9,7 +9,8 @@
   "scripts": {
     "dev:web": "echo web app shell exists but no frontend runtime is wired yet",
     "dev:api": "node --experimental-strip-types apps/api/src/server.ts",
+    "dev:telegram-bot": "node --experimental-strip-types apps/telegram-bot/src/bot.ts",
     "build": "echo build not wired yet",
-    "test": "node --experimental-strip-types --test packages/domain/src/**/*.test.ts apps/api/src/**/*.test.ts"
+    "test": "node --experimental-strip-types --test packages/domain/src/**/*.test.ts apps/api/src/**/*.test.ts apps/telegram-bot/src/**/*.test.ts"
   }
 }
