@@ -1,3 +1,9 @@
+import {
+  initTelegramSurface,
+  setMainButtonLoading,
+  setMainButtonVisible
+} from "./telegram-surface.js";
+
 const searchInput = document.querySelector("#search-input");
 const searchStatus = document.querySelector("#search-status");
 const searchResults = document.querySelector("#search-results");
@@ -43,6 +49,40 @@ function formatCurrency(value) {
   }
 
   return new Intl.NumberFormat("fa-IR").format(value);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function wrapLtr(value) {
+  return `<bdi dir="ltr" class="mixed-ltr">${escapeHtml(value)}</bdi>`;
+}
+
+function wrapAmount(value, suffix = "ریال") {
+  return `${wrapLtr(formatCurrency(value))} ${suffix}`;
+}
+
+function syncTelegramMainButton() {
+  if (!telegramSurfaceActive) {
+    return;
+  }
+
+  setMainButtonVisible(!recalculateButton.disabled);
+}
+
+const telegramSurfaceActive = initTelegramSurface({
+  onRecalculate: () => {
+    recalculatePrice();
+  }
+});
+
+if (telegramSurfaceActive) {
+  recalculateButton.classList.add("telegram-hidden");
 }
 
 function lookupParams() {
@@ -147,9 +187,9 @@ function updateSelectedGoodCard(pricing) {
   }
 
   selectedGood.innerHTML = `
-    <strong>${pricing.persianTitle || pricing.title}</strong>
-    <div class="selected-line">${pricing.title}</div>
-    <div class="selected-line">${pricing.packLabel ?? ""}</div>
+    <strong>${escapeHtml(pricing.persianTitle || pricing.title)}</strong>
+    <div class="selected-line">${wrapLtr(pricing.title)}</div>
+    <div class="selected-line">${escapeHtml(pricing.packLabel ?? "")}</div>
   `;
   selectedGood.classList.remove("is-hidden");
 }
@@ -171,6 +211,7 @@ function resetFormState() {
   updateSelectedGoodCard(null);
   clearValidationState();
   recalculateButton.disabled = true;
+  syncTelegramMainButton();
   syncUrl();
 }
 
@@ -197,8 +238,8 @@ function renderSelectionStep(payload) {
     button.type = "button";
     button.className = "search-card selection-choice";
     button.innerHTML = `
-      <strong>${choice.label}</strong>
-      ${choice.description ? `<span class="meta">${choice.description}</span>` : ""}
+      <strong dir="auto">${escapeHtml(choice.label)}</strong>
+      ${choice.description ? `<span class="meta" dir="auto">${escapeHtml(choice.description)}</span>` : ""}
     `;
 
     button.addEventListener("click", () => {
@@ -222,19 +263,19 @@ function renderMessagePanel(message, isError = false) {
 function renderPricingResult(pricing) {
   const unitPriceLabel = pricing.unitPriceLabel ?? `قیمت هر ${patientUnitLabel(pricing.unitLabel)}`;
   const metrics = [
-    [unitPriceLabel, `${formatCurrency(pricing.consumerUnitPrice)} ریال`],
-    ["قیمت نهایی", `${formatCurrency(pricing.finalConsumerPrice)} ریال`]
+    [unitPriceLabel, wrapAmount(pricing.consumerUnitPrice)],
+    ["قیمت نهایی", wrapAmount(pricing.finalConsumerPrice)]
   ];
 
   if (Number(pricing.quantity) > 1) {
-    metrics.push(["جمع برای تعداد درخواستی", `${formatCurrency(pricing.consumerTotalPrice)} ریال`]);
+    metrics.push(["جمع برای تعداد درخواستی", wrapAmount(pricing.consumerTotalPrice)]);
   }
 
   pricingResult.innerHTML = metrics
     .map(
       ([label, value], index) => `
         <div class="metric-card ${index === 0 ? "featured" : ""}">
-          <span>${label}</span>
+          <span>${escapeHtml(label)}</span>
           <strong>${value}</strong>
         </div>
       `
@@ -243,19 +284,19 @@ function renderPricingResult(pricing) {
 
   const warnings = pricing.warnings?.length
     ? `<div class="warning-list">${pricing.warnings
-        .map((warning) => `<div class="warning-chip">${warning}</div>`)
+        .map((warning) => `<div class="warning-chip">${escapeHtml(warning)}</div>`)
         .join("")}</div>`
     : "";
 
   pricingResult.innerHTML += `
     <div class="rules-card">
-      <strong>${pricing.persianTitle || pricing.title}</strong>
-      <div><span>نام انگلیسی</span>${pricing.englishTitle ?? pricing.title}</div>
-      <div><span>بسته‌بندی</span>${pricing.packLabel ?? "نامشخص"}</div>
-      <div><span>تعداد</span>${formatCurrency(pricing.quantity)}</div>
+      <strong>${escapeHtml(pricing.persianTitle || pricing.title)}</strong>
+      <div><span>نام انگلیسی</span>${wrapLtr(pricing.englishTitle ?? pricing.title)}</div>
+      <div><span>بسته‌بندی</span>${escapeHtml(pricing.packLabel ?? "نامشخص")}</div>
+      <div><span>تعداد</span><bdi class="num">${escapeHtml(formatCurrency(pricing.quantity))}</bdi></div>
       <div class="source-list">
         ${(pricing.sourceHints ?? [])
-          .map((source) => `<div class="source-chip">${source.label}</div>`)
+          .map((source) => `<div class="source-chip">${escapeHtml(source.label)}</div>`)
           .join("")}
       </div>
       ${warnings}
@@ -282,6 +323,7 @@ function applyResolvedResult(payload) {
   setStatus(pricingStatus, "قیمت آماده است.");
   renderHints(["در صورت نیاز تعداد یا تاریخ را تغییر دهید و قیمت را بروزرسانی کنید."]);
   recalculateButton.disabled = false;
+  syncTelegramMainButton();
   syncUrl();
 }
 
@@ -300,6 +342,7 @@ function handleLookupResponse(payload) {
     pricingResult.innerHTML = "";
     updateSelectedGoodCard(null);
     recalculateButton.disabled = true;
+    syncTelegramMainButton();
     setStatus(searchStatus, "برای ادامه یک گزینه را انتخاب کنید.");
     setStatus(pricingStatus, "");
     renderHints(["قیمت پس از مشخص شدن شکل و دوز دارو نمایش داده می‌شود."]);
@@ -312,6 +355,7 @@ function handleLookupResponse(payload) {
     pricingResult.innerHTML = "";
     updateSelectedGoodCard(null);
     recalculateButton.disabled = true;
+    syncTelegramMainButton();
     return;
   }
 
@@ -320,6 +364,7 @@ function handleLookupResponse(payload) {
     setStatus(searchStatus, payload.message);
     pricingResult.innerHTML = "";
     recalculateButton.disabled = true;
+    syncTelegramMainButton();
     return;
   }
 
@@ -328,6 +373,7 @@ function handleLookupResponse(payload) {
     setStatus(searchStatus, payload.message, true);
     state.sessionId = "";
     recalculateButton.disabled = true;
+    syncTelegramMainButton();
     return;
   }
 }
@@ -405,6 +451,7 @@ async function recalculatePrice() {
 
   recalculateButton.disabled = true;
   recalculateButton.textContent = "در حال محاسبه...";
+  setMainButtonLoading(true);
   setStatus(pricingStatus, "");
 
   try {
@@ -449,6 +496,8 @@ async function recalculatePrice() {
   } finally {
     recalculateButton.disabled = false;
     recalculateButton.textContent = "بروزرسانی قیمت";
+    setMainButtonLoading(false);
+    syncTelegramMainButton();
   }
 }
 

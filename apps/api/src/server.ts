@@ -13,7 +13,15 @@ const staticFiles = new Map([
   ["/", { filePath: "index.html", contentType: "text/html; charset=utf-8" }],
   ["/app", { filePath: "index.html", contentType: "text/html; charset=utf-8" }],
   ["/app.css", { filePath: "app.css", contentType: "text/css; charset=utf-8" }],
-  ["/app.js", { filePath: "app.js", contentType: "text/javascript; charset=utf-8" }]
+  ["/app.js", { filePath: "app.js", contentType: "text/javascript; charset=utf-8" }],
+  [
+    "/telegram-mini-app.css",
+    { filePath: "telegram-mini-app.css", contentType: "text/css; charset=utf-8" }
+  ],
+  [
+    "/telegram-surface.js",
+    { filePath: "telegram-surface.js", contentType: "text/javascript; charset=utf-8" }
+  ]
 ]);
 
 const port = Number(process.env.PORT ?? 4000);
@@ -35,19 +43,22 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === "GET" && staticFiles.has(request.url)) {
-    const file = staticFiles.get(request.url);
+  if (request.method === "GET") {
+    const requestPath = new URL(request.url, "http://localhost").pathname;
+    const file = staticFiles.get(requestPath);
 
-    try {
-      const content = await readFile(path.join(staticDirectory, file.filePath), "utf8");
-      response.setHeader("Content-Type", file.contentType);
-      response.end(content);
-    } catch {
-      response.statusCode = 500;
-      response.end("Unable to load app");
+    if (file) {
+      try {
+        const content = await readFile(path.join(staticDirectory, file.filePath), "utf8");
+        response.setHeader("Content-Type", file.contentType);
+        response.end(content);
+      } catch {
+        response.statusCode = 500;
+        response.end("Unable to load app");
+      }
+
+      return;
     }
-
-    return;
   }
 
   if (request.method === "GET" && request.url.startsWith("/goods/search")) {
