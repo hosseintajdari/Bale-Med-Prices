@@ -10,6 +10,7 @@ output/
 
 .codex/
 .cursor/tmp/
+.cursor/hooks/telegram.env
 local-inputs/
 
 *.log
