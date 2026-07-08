@@ -4,6 +4,7 @@ import { pricingService } from "./pricing-service.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
 import { webResponsePresenter } from "./web-response-presenter.ts";
 import { goodsRepository } from "../repositories/goods-repository.ts";
+import { buildTtacDetailUrl } from "./ttac-detail.ts";
 
 function buildTtacDetailPlaceholder(selection) {
   const good = goodsRepository.getById(selection.goodId);
@@ -14,16 +15,19 @@ function buildTtacDetailPlaceholder(selection) {
     return null;
   }
 
+  const detailUrl = buildTtacDetailUrl(ttacCode);
+
   return {
     sourceKey: ttacSource.key,
     sourceLabel: ttacSource.label,
     status: "not_loaded",
     ttacCode,
+    detailUrl,
     availableActions: [
       {
         key: "view_ttac_detail",
         label: "مشاهده اطلاعات دارو در TTAC",
-        status: "available"
+        status: detailUrl ? "available" : "not_configured"
       }
     ]
   };

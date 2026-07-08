@@ -7,6 +7,8 @@ output/
 .env
 .env.*
 !.env.example
+!.env.telegram.example
+.env.telegram
 
 .codex/
 .cursor/tmp/

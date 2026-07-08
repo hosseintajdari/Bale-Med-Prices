@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 import { pricingController } from "./controllers/pricing-controller.ts";
 import { goodsController } from "./controllers/goods-controller.ts";
 import { botController } from "./controllers/bot-controller.ts";
+import {
+  maybeRegisterTelegramWebhookOnStartup,
+  telegramWebhookController
+} from "./controllers/telegram-webhook-controller.ts";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const staticDirectory = path.resolve(currentDirectory, "../../web/static");
@@ -37,6 +41,8 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const requestPath = new URL(request.url, "http://localhost").pathname;
+
   if (request.method === "OPTIONS") {
     response.statusCode = 204;
     response.end();
@@ -44,7 +50,6 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === "GET") {
-    const requestPath = new URL(request.url, "http://localhost").pathname;
     const file = staticFiles.get(requestPath);
 
     if (file) {
@@ -59,6 +64,11 @@ const server = createServer(async (request, response) => {
 
       return;
     }
+  }
+
+  if (request.method === "POST" && requestPath === "/telegram/webhook") {
+    await telegramWebhookController.handle(request, response);
+    return;
   }
 
   if (request.method === "GET" && request.url.startsWith("/goods/search")) {
@@ -90,4 +100,8 @@ const server = createServer(async (request, response) => {
   response.end("Not found");
 });
 
-server.listen(port);
+server.listen(port, () => {
+  maybeRegisterTelegramWebhookOnStartup().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+  });
+});
