@@ -1,5 +1,6 @@
 import { goods } from "../data/mock-data.ts";
 import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
+import { selectionHistoryStore } from "../services/selection-history-store.ts";
 
 const DOSAGE_FORM_TOKENS = new Set([
   "قرص",
@@ -128,7 +129,7 @@ function scoreFieldMatches(term, tokens, value, weight) {
   return score;
 }
 
-function scoreGood(term, tokens, good) {
+function scoreGood(term, tokens, good, query) {
   const explicitFormKeys = findExplicitKeys(term, FORM_ALIASES);
   const explicitQualifierKeys = findExplicitKeys(term, QUALIFIER_ALIASES);
   let score = 0;
@@ -166,12 +167,15 @@ function scoreGood(term, tokens, good) {
     score += 3;
   }
 
+  score += selectionHistoryStore.getSelectionCount(query, good.id) * 10;
+
   return score;
 }
 
 export const goodsRepository = {
   search(input) {
-    const term = normalizeSearchText(input?.query ?? "");
+    const query = input?.query ?? "";
+    const term = normalizeSearchText(query);
     const tokens = tokenize(term);
 
     if (!term) {
@@ -208,7 +212,9 @@ export const goodsRepository = {
           )
         );
       })
-      .sort((left, right) => scoreGood(term, tokens, right) - scoreGood(term, tokens, left));
+      .sort(
+        (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
+      );
   },
 
   getById(id) {

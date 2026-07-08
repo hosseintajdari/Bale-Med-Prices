@@ -2,7 +2,7 @@ const searchInput = document.querySelector("#search-input");
 const searchStatus = document.querySelector("#search-status");
 const searchResults = document.querySelector("#search-results");
 const pricingForm = document.querySelector("#pricing-form");
-const calculateButton = document.querySelector("#calculate-button");
+const recalculateButton = document.querySelector("#recalculate-button");
 const resetButton = document.querySelector("#reset-button");
 const selectedGood = document.querySelector("#selected-good");
 const pricingStatus = document.querySelector("#pricing-status");
@@ -12,20 +12,58 @@ const formHints = document.querySelector("#form-hints");
 const formElements = {
   goodId: document.querySelector("#good-id"),
   documentDate: document.querySelector("#document-date"),
-  quantity: document.querySelector("#quantity"),
-  warehouseId: document.querySelector("#warehouse-id"),
-  includeTechnicalFee: document.querySelector("#include-technical-fee")
+  quantity: document.querySelector("#quantity")
+};
+
+const UNIT_LABELS = {
+  bottle: "شربت",
+  capsule: "کپسول",
+  softgel: "سافت‌ژل",
+  suppository: "شیاف",
+  tablet: "قرص",
+  tube: "تیوب"
 };
 
 const state = {
   query: "",
-  selectedGoodId: "",
-  results: [],
-  lastCalculatedGoodId: "",
-  autoSelectedFromSearch: false,
-  highlightedIndex: -1,
+  sessionId: "",
+  resolvedGoodId: "",
+  pricing: null,
+  lookupInFlight: false,
   restoredFromUrl: false
 };
+
+function patientUnitLabel(unitLabel) {
+  return UNIT_LABELS[unitLabel] ?? unitLabel ?? "واحد";
+}
+
+function formatCurrency(value) {
+  if (value == null) {
+    return "نامشخص";
+  }
+
+  return new Intl.NumberFormat("fa-IR").format(value);
+}
+
+function lookupParams() {
+  const params = new URLSearchParams({
+    format: "web",
+    q: searchInput.value.trim(),
+    documentDate: formElements.documentDate.value.trim(),
+    quantity: formElements.quantity.value.trim() || "1",
+    warehouseId: "main",
+    includeTechnicalFee: "on"
+  });
+
+  return params;
+}
+
+function selectParams(sessionId, choiceId) {
+  const params = lookupParams();
+  params.set("sessionId", sessionId);
+  params.set("choiceId", choiceId);
+  return params;
+}
 
 function buildUrlFromState() {
   const params = new URLSearchParams();
@@ -33,7 +71,6 @@ function buildUrlFromState() {
   const goodId = formElements.goodId.value.trim();
   const documentDate = formElements.documentDate.value.trim();
   const quantity = formElements.quantity.value.trim();
-  const warehouseId = formElements.warehouseId.value.trim();
 
   if (query) {
     params.set("q", query);
@@ -49,14 +86,6 @@ function buildUrlFromState() {
 
   if (quantity) {
     params.set("quantity", quantity);
-  }
-
-  if (warehouseId) {
-    params.set("warehouseId", warehouseId);
-  }
-
-  if (formElements.includeTechnicalFee.checked) {
-    params.set("includeTechnicalFee", "on");
   }
 
   return params.toString();
@@ -80,27 +109,15 @@ function applyUrlState() {
   const goodId = params.get("goodId") ?? "";
   const documentDate = params.get("documentDate") ?? "2026-06-24";
   const quantity = params.get("quantity") ?? "1";
-  const warehouseId = params.get("warehouseId") ?? "main";
-  const includeTechnicalFee = params.get("includeTechnicalFee") !== "off";
 
   searchInput.value = searchQuery;
   formElements.goodId.value = goodId;
   formElements.documentDate.value = documentDate;
   formElements.quantity.value = quantity;
-  formElements.warehouseId.value = warehouseId;
-  formElements.includeTechnicalFee.checked = includeTechnicalFee;
 
   state.query = searchQuery;
-  state.selectedGoodId = goodId;
+  state.resolvedGoodId = goodId;
   state.restoredFromUrl = true;
-}
-
-function formatCurrency(value) {
-  if (value == null) {
-    return "Unavailable";
-  }
-
-  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function setStatus(element, message, isError = false) {
@@ -116,250 +133,107 @@ function clearValidationState() {
   }
 }
 
-function resetFormState() {
-  state.selectedGoodId = "";
-  state.lastCalculatedGoodId = "";
-  state.autoSelectedFromSearch = false;
-  state.highlightedIndex = -1;
-  formElements.goodId.value = "";
-  formElements.documentDate.value = "2026-06-24";
-  formElements.quantity.value = "1";
-  formElements.warehouseId.value = "main";
-  formElements.includeTechnicalFee.checked = true;
-  searchInput.value = "";
-  state.query = "";
-  pricingResult.innerHTML = "";
-  setStatus(pricingStatus, "");
-  renderHints([]);
-  updateSelectedGoodCard(null);
-  clearValidationState();
-  renderSearchResults(state.results);
-  syncUrl();
-}
-
 function renderHints(messages) {
   formHints.innerHTML = messages
     .map((message) => `<div class="hint-chip">${message}</div>`)
     .join("");
 }
 
-function updateSelectedGoodCard(good) {
-  if (!good) {
+function updateSelectedGoodCard(pricing) {
+  if (!pricing) {
     selectedGood.classList.add("is-hidden");
     selectedGood.innerHTML = "";
     return;
   }
 
   selectedGood.innerHTML = `
-    <strong>${good.title}</strong>
-    <div class="selected-line">${good.persianTitle}</div>
-    <div class="selected-line">${good.brand} · unit price ${formatCurrency(good.consumerUnitPrice)}</div>
-    <div class="selected-line">${good.unitLabel} · ${good.nonPharma ? "Non-pharma item" : "Pharma item"}</div>
+    <strong>${pricing.persianTitle || pricing.title}</strong>
+    <div class="selected-line">${pricing.title}</div>
+    <div class="selected-line">${pricing.packLabel ?? ""}</div>
   `;
   selectedGood.classList.remove("is-hidden");
 }
 
-function selectGood(good, options = {}) {
-  state.selectedGoodId = good.id;
-  state.autoSelectedFromSearch = Boolean(options.autoSelected);
-  state.highlightedIndex = state.results.findIndex((item) => item.id === good.id);
-  formElements.goodId.value = good.id;
-  updateSelectedGoodCard(good);
+function resetFormState() {
+  state.sessionId = "";
+  state.resolvedGoodId = "";
+  state.pricing = null;
+  state.query = "";
+  formElements.goodId.value = "";
+  formElements.documentDate.value = "2026-06-24";
+  formElements.quantity.value = "1";
+  searchInput.value = "";
   pricingResult.innerHTML = "";
-  pricingStatus.textContent = "";
-  renderSearchResults(state.results);
-
-  const hints = [
-    `${good.title} is selected and ready for consumer price lookup.`,
-    state.autoSelectedFromSearch
-      ? "The closest search result was selected automatically."
-      : "You can still adjust quantity, date, or warehouse before calculation."
-  ];
-
-  renderHints(hints);
-  syncUrl();
-}
-
-function findGoodById(id) {
-  return state.results.find((good) => good.id === id) ?? null;
-}
-
-function moveHighlight(direction) {
-  if (state.results.length === 0) {
-    return;
-  }
-
-  if (state.highlightedIndex === -1) {
-    state.highlightedIndex = direction > 0 ? 0 : state.results.length - 1;
-  } else {
-    state.highlightedIndex =
-      (state.highlightedIndex + direction + state.results.length) % state.results.length;
-  }
-
-  const highlightedGood = state.results[state.highlightedIndex];
-  renderSearchResults(state.results);
-  renderHints([
-    `${highlightedGood.title} is highlighted.`,
-    "Press Enter to select this result."
-  ]);
-}
-
-function validateForm() {
+  searchResults.innerHTML = "";
+  setStatus(searchStatus, "");
+  setStatus(pricingStatus, "");
+  renderHints([]);
+  updateSelectedGoodCard(null);
   clearValidationState();
-
-  const hints = [];
-  const errors = [];
-  const goodId = formElements.goodId.value.trim();
-  const date = formElements.documentDate.value.trim();
-  const quantity = Number(formElements.quantity.value);
-  const warehouseId = formElements.warehouseId.value.trim();
-
-  if (!goodId) {
-    errors.push("Pick a good from the search results or enter a good id.");
-    formElements.goodId.classList.add("is-invalid");
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    errors.push("Document date should use the YYYY-MM-DD format.");
-    formElements.documentDate.classList.add("is-invalid");
-  }
-
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    errors.push("Quantity must be a positive number.");
-    formElements.quantity.classList.add("is-invalid");
-  }
-
-  if (!warehouseId) {
-    errors.push("Warehouse is required.");
-    formElements.warehouseId.classList.add("is-invalid");
-  }
-
-  const selectedGood = findGoodById(goodId);
-  if (selectedGood) {
-    hints.push(
-      selectedGood.nonPharma
-        ? "Technical fee may stay zero for non-pharma goods."
-        : "Technical fee can apply for pharma goods when the rule matches."
-    );
-  }
-
-  return {
-    errors,
-    hints
-  };
+  recalculateButton.disabled = true;
+  syncUrl();
 }
 
 async function readJson(response) {
   const payload = await response.json();
 
   if (!response.ok) {
-    throw new Error(payload.error ?? "Request failed");
+    throw new Error(payload.error ?? "درخواست ناموفق بود");
   }
 
   return payload;
 }
 
-function renderSearchResults(items) {
+function renderSelectionStep(payload) {
   searchResults.innerHTML = "";
 
-  if (items.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "status-text";
-    empty.textContent = state.query.trim() ? "No goods matched this search." : "Type to narrow the list.";
-    searchResults.append(empty);
-    return;
-  }
+  const prompt = document.createElement("p");
+  prompt.className = "selection-prompt";
+  prompt.textContent = payload.prompt ?? "یک گزینه را انتخاب کنید";
+  searchResults.append(prompt);
 
-  for (const good of items) {
+  for (const choice of payload.choices ?? []) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "search-card";
-
-    if (state.selectedGoodId === good.id || state.highlightedIndex === state.results.indexOf(good)) {
-      button.classList.add("is-active");
-    }
-
+    button.className = "search-card selection-choice";
     button.innerHTML = `
-      <strong>${good.title}</strong>
-      <span class="meta">${good.persianTitle}</span>
-      <span class="altmeta">${good.brand} · ${good.unitLabel} · unit price ${formatCurrency(good.consumerUnitPrice)}</span>
-      <span class="submeta">${good.englishTitle} · ${good.barcode}</span>
+      <strong>${choice.label}</strong>
+      ${choice.description ? `<span class="meta">${choice.description}</span>` : ""}
     `;
 
     button.addEventListener("click", () => {
-      selectGood(good);
+      continueSelection(payload.sessionId, choice.id);
     });
 
     searchResults.append(button);
   }
+
+  state.sessionId = payload.sessionId ?? "";
 }
 
-async function searchGoods(query) {
-  state.query = query;
-  setStatus(searchStatus, "Searching...");
-
-  try {
-    const response = await fetch(`/goods/search?q=${encodeURIComponent(query.trim())}`);
-    const payload = await readJson(response);
-    state.results = payload.items;
-    renderSearchResults(payload.items);
-    setStatus(searchStatus, payload.total > 0 ? `${payload.total} goods found.` : "");
-
-    const currentSelectionStillVisible = payload.items.some(
-      (good) => good.id === state.selectedGoodId
-    );
-
-    if (!currentSelectionStillVisible && payload.items.length === 1) {
-      selectGood(payload.items[0], { autoSelected: true });
-    } else if (!currentSelectionStillVisible && payload.items.length === 0) {
-      state.selectedGoodId = "";
-      state.autoSelectedFromSearch = false;
-      updateSelectedGoodCard(null);
-      renderHints([]);
-    } else if (currentSelectionStillVisible) {
-      const currentGood = payload.items.find((good) => good.id === state.selectedGoodId);
-      updateSelectedGoodCard(currentGood);
-      if (currentGood) {
-        renderHints([
-          `${currentGood.title} is selected and ready for consumer price lookup.`,
-          "You can still adjust quantity, date, or warehouse before calculation."
-        ]);
-      }
-    }
-
-    if (state.restoredFromUrl && state.selectedGoodId) {
-      const restoredGood = payload.items.find((good) => good.id === state.selectedGoodId);
-      if (restoredGood) {
-        updateSelectedGoodCard(restoredGood);
-        renderHints([
-          `${restoredGood.title} was restored from the page link.`,
-          "You can refresh this page without losing the selected context."
-        ]);
-      }
-    }
-  } catch (error) {
-    state.results = [];
-    renderSearchResults([]);
-    setStatus(searchStatus, error.message ?? "Search failed", true);
-  }
+function renderMessagePanel(message, isError = false) {
+  searchResults.innerHTML = "";
+  const panel = document.createElement("p");
+  panel.className = `status-text${isError ? " is-error" : ""}`;
+  panel.textContent = message;
+  searchResults.append(panel);
 }
 
-function renderPricingResult(result) {
+function renderPricingResult(pricing) {
+  const unitPriceLabel = pricing.unitPriceLabel ?? `قیمت هر ${patientUnitLabel(pricing.unitLabel)}`;
   const metrics = [
-    ["Consumer unit price", formatCurrency(result.consumerUnitPrice)],
-    ["Consumer total price", formatCurrency(result.consumerTotalPrice)],
-    ["Final consumer price", formatCurrency(result.finalConsumerPrice ?? result.finalPrice)],
-    ["Unit type", result.unitLabel ?? "Unavailable"],
-    ["Requested quantity", String(result.quantity ?? 1)],
-    ["Technical fee", formatCurrency(result.technicalFee)],
-    ["Tax amount", formatCurrency(result.taxAmount)],
-    ["Toll amount", formatCurrency(result.tollAmount)]
+    [unitPriceLabel, `${formatCurrency(pricing.consumerUnitPrice)} ریال`],
+    ["قیمت نهایی", `${formatCurrency(pricing.finalConsumerPrice)} ریال`]
   ];
+
+  if (Number(pricing.quantity) > 1) {
+    metrics.push(["جمع برای تعداد درخواستی", `${formatCurrency(pricing.consumerTotalPrice)} ریال`]);
+  }
 
   pricingResult.innerHTML = metrics
     .map(
       ([label, value], index) => `
-        <div class="metric-card ${index === 0 || index === 2 ? "featured" : ""}">
+        <div class="metric-card ${index === 0 ? "featured" : ""}">
           <span>${label}</span>
           <strong>${value}</strong>
         </div>
@@ -367,23 +241,21 @@ function renderPricingResult(result) {
     )
     .join("");
 
-  const warnings = result.warnings.length
-    ? `<div class="warning-list">${result.warnings
+  const warnings = pricing.warnings?.length
+    ? `<div class="warning-list">${pricing.warnings
         .map((warning) => `<div class="warning-chip">${warning}</div>`)
         .join("")}</div>`
     : "";
 
   pricingResult.innerHTML += `
     <div class="rules-card">
-      <strong>${result.title}</strong>
-      <div><span>Persian title</span>${result.persianTitle ?? "Unavailable"}</div>
-      <div><span>English title</span>${result.englishTitle ?? result.title}</div>
-      <div><span>Pack description</span>${result.packLabel ?? "Unavailable"}</div>
-      <div><span>Tax date</span>${result.appliedTaxDate ?? "Unavailable"}</div>
-      <div><span>Technical fee date</span>${result.appliedTechnicalFeeDate ?? "Unavailable"}</div>
+      <strong>${pricing.persianTitle || pricing.title}</strong>
+      <div><span>نام انگلیسی</span>${pricing.englishTitle ?? pricing.title}</div>
+      <div><span>بسته‌بندی</span>${pricing.packLabel ?? "نامشخص"}</div>
+      <div><span>تعداد</span>${formatCurrency(pricing.quantity)}</div>
       <div class="source-list">
-        ${(result.sourceHints ?? [])
-          .map((source) => `<div class="source-chip">${source.label} · ${source.role}</div>`)
+        ${(pricing.sourceHints ?? [])
+          .map((source) => `<div class="source-chip">${source.label}</div>`)
           .join("")}
       </div>
       ${warnings}
@@ -391,54 +263,149 @@ function renderPricingResult(result) {
   `;
 }
 
-let searchTimer = null;
-searchInput.addEventListener("input", (event) => {
-  state.highlightedIndex = -1;
-  state.query = event.target.value;
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    syncUrl();
-    searchGoods(event.target.value);
-  }, 180);
-});
+function applyResolvedResult(payload) {
+  const pricing = payload.pricing;
 
-searchInput.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    moveHighlight(1);
+  if (!pricing) {
+    setStatus(pricingStatus, "قیمت در دسترس نیست.", true);
     return;
   }
 
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    moveHighlight(-1);
+  state.resolvedGoodId = payload.goodId;
+  state.pricing = pricing;
+  state.sessionId = "";
+  formElements.goodId.value = payload.goodId;
+  updateSelectedGoodCard(pricing);
+  renderPricingResult(pricing);
+  searchResults.innerHTML = "";
+  setStatus(searchStatus, "دارو مشخص شد.");
+  setStatus(pricingStatus, "قیمت آماده است.");
+  renderHints(["در صورت نیاز تعداد یا تاریخ را تغییر دهید و قیمت را بروزرسانی کنید."]);
+  recalculateButton.disabled = false;
+  syncUrl();
+}
+
+function handleLookupResponse(payload) {
+  if (payload.type === "resolved") {
+    applyResolvedResult(payload);
     return;
   }
 
-  if (event.key === "Enter") {
-    if (state.highlightedIndex >= 0 && state.results[state.highlightedIndex]) {
-      event.preventDefault();
-      selectGood(state.results[state.highlightedIndex]);
-    }
-  }
-});
-
-pricingForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const validation = validateForm();
-
-  if (validation.errors.length > 0) {
+  if (
+    payload.type === "needs_form_selection" ||
+    payload.type === "needs_strength_selection" ||
+    payload.type === "needs_identity_selection"
+  ) {
+    renderSelectionStep(payload);
     pricingResult.innerHTML = "";
-    setStatus(pricingStatus, validation.errors[0], true);
-    renderHints(validation.errors.slice(1).concat(validation.hints));
+    updateSelectedGoodCard(null);
+    recalculateButton.disabled = true;
+    setStatus(searchStatus, "برای ادامه یک گزینه را انتخاب کنید.");
+    setStatus(pricingStatus, "");
+    renderHints(["قیمت پس از مشخص شدن شکل و دوز دارو نمایش داده می‌شود."]);
     return;
   }
 
-  calculateButton.disabled = true;
-  calculateButton.textContent = "Finding price...";
-  pricingResult.innerHTML = "";
+  if (payload.type === "not_found") {
+    renderMessagePanel(payload.message, true);
+    setStatus(searchStatus, payload.message, true);
+    pricingResult.innerHTML = "";
+    updateSelectedGoodCard(null);
+    recalculateButton.disabled = true;
+    return;
+  }
+
+  if (payload.type === "refine_search") {
+    renderMessagePanel(payload.message);
+    setStatus(searchStatus, payload.message);
+    pricingResult.innerHTML = "";
+    recalculateButton.disabled = true;
+    return;
+  }
+
+  if (payload.type === "expired_selection" || payload.type === "invalid_selection") {
+    renderMessagePanel(payload.message, true);
+    setStatus(searchStatus, payload.message, true);
+    state.sessionId = "";
+    recalculateButton.disabled = true;
+    return;
+  }
+}
+
+async function lookupMedicine(query) {
+  const trimmedQuery = query.trim();
+  state.query = trimmedQuery;
+
+  if (!trimmedQuery) {
+    searchResults.innerHTML = "";
+    setStatus(searchStatus, "نام دارو را وارد کنید.");
+    return;
+  }
+
+  state.lookupInFlight = true;
+  setStatus(searchStatus, "در حال جستجو...");
+
+  try {
+    const response = await fetch(`/bot/lookup?${lookupParams().toString()}`);
+    const payload = await readJson(response);
+    handleLookupResponse(payload);
+  } catch (error) {
+    renderMessagePanel(error.message ?? "جستجو ناموفق بود", true);
+    setStatus(searchStatus, error.message ?? "جستجو ناموفق بود", true);
+  } finally {
+    state.lookupInFlight = false;
+  }
+}
+
+async function continueSelection(sessionId, choiceId) {
+  setStatus(searchStatus, "در حال پردازش انتخاب...");
+
+  try {
+    const response = await fetch(`/bot/select?${selectParams(sessionId, choiceId).toString()}`);
+    const payload = await readJson(response);
+    handleLookupResponse(payload);
+  } catch (error) {
+    setStatus(searchStatus, error.message ?? "انتخاب ناموفق بود", true);
+  }
+}
+
+function validateRecalculateForm() {
+  clearValidationState();
+
+  const errors = [];
+  const goodId = formElements.goodId.value.trim();
+  const date = formElements.documentDate.value.trim();
+  const quantity = Number(formElements.quantity.value);
+
+  if (!goodId) {
+    errors.push("ابتدا دارو را از طریق جستجو انتخاب کنید.");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    errors.push("تاریخ باید به شکل YYYY-MM-DD باشد.");
+    formElements.documentDate.classList.add("is-invalid");
+  }
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    errors.push("تعداد باید عدد مثبت باشد.");
+    formElements.quantity.classList.add("is-invalid");
+  }
+
+  return errors;
+}
+
+async function recalculatePrice() {
+  const errors = validateRecalculateForm();
+
+  if (errors.length > 0) {
+    setStatus(pricingStatus, errors[0], true);
+    renderHints(errors.slice(1));
+    return;
+  }
+
+  recalculateButton.disabled = true;
+  recalculateButton.textContent = "در حال محاسبه...";
   setStatus(pricingStatus, "");
-  renderHints(validation.hints);
 
   try {
     const response = await fetch("/pricing/calculate", {
@@ -450,57 +417,71 @@ pricingForm.addEventListener("submit", async (event) => {
         goodId: formElements.goodId.value,
         documentDate: formElements.documentDate.value,
         quantity: Number(formElements.quantity.value),
-        warehouseId: formElements.warehouseId.value,
-        includeTechnicalFee: formElements.includeTechnicalFee.checked
+        warehouseId: "main",
+        includeTechnicalFee: true
       })
     });
 
     const payload = await readJson(response);
-    state.lastCalculatedGoodId = payload.goodId;
-    renderPricingResult(payload);
-    setStatus(pricingStatus, "Consumer price is ready.");
+    const pricing = {
+      goodId: payload.goodId,
+      title: payload.title,
+      persianTitle: payload.persianTitle,
+      englishTitle: payload.englishTitle,
+      unitLabel: payload.unitLabel,
+      packLabel: payload.packLabel,
+      quantity: payload.quantity,
+      consumerUnitPrice: payload.consumerUnitPrice,
+      consumerTotalPrice: payload.consumerTotalPrice,
+      finalConsumerPrice: payload.finalConsumerPrice,
+      sourceHints: payload.sourceHints,
+      warnings: payload.warnings,
+      unitPriceLabel: `قیمت هر ${patientUnitLabel(payload.unitLabel)}`
+    };
+
+    state.pricing = pricing;
+    renderPricingResult(pricing);
+    updateSelectedGoodCard(pricing);
+    setStatus(pricingStatus, "قیمت بروزرسانی شد.");
     syncUrl();
-
-    const calculatedGood = findGoodById(payload.goodId);
-    const freshHints = [];
-
-    if (calculatedGood && calculatedGood.tempPrice && !calculatedGood.sellPrice) {
-      freshHints.push("This item is using temp price because sell price is unavailable.");
-    }
-
-    if (payload.warnings.length === 0) {
-      freshHints.push("No pricing warnings were returned for this consumer price.");
-    }
-
-    renderHints(validation.hints.concat(freshHints));
   } catch (error) {
-    setStatus(pricingStatus, error.message ?? "Calculation failed", true);
+    setStatus(pricingStatus, error.message ?? "محاسبه قیمت ناموفق بود", true);
   } finally {
-    calculateButton.disabled = false;
-    calculateButton.textContent = "Find consumer price";
+    recalculateButton.disabled = false;
+    recalculateButton.textContent = "بروزرسانی قیمت";
   }
+}
+
+let searchTimer = null;
+
+searchInput.addEventListener("input", (event) => {
+  state.query = event.target.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    syncUrl();
+    lookupMedicine(event.target.value);
+  }, 220);
+});
+
+pricingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await recalculatePrice();
 });
 
 resetButton.addEventListener("click", () => {
   resetFormState();
-  setStatus(pricingStatus, "Form was reset.");
+  setStatus(pricingStatus, "فرم پاک شد.");
 });
 
-for (const input of [
-  formElements.goodId,
-  formElements.documentDate,
-  formElements.quantity,
-  formElements.warehouseId
-]) {
+for (const input of [formElements.documentDate, formElements.quantity]) {
   input.addEventListener("input", () => {
     input.classList.remove("is-invalid");
     syncUrl();
   });
 }
 
-formElements.includeTechnicalFee.addEventListener("change", () => {
-  syncUrl();
-});
-
 applyUrlState();
-searchGoods(searchInput.value);
+
+if (searchInput.value.trim()) {
+  lookupMedicine(searchInput.value);
+}

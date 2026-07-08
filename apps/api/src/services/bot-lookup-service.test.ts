@@ -620,3 +620,39 @@ test("botLookupService returns not_found for missing match", () => {
   assert.equal(result.type, "not_found");
   assert.match(result.text, /No medicine was found/);
 });
+
+test("botLookupService returns web-friendly selection payload without telegram fields", () => {
+  const result = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true,
+    format: "web"
+  });
+
+  assert.equal(result.type, "needs_form_selection");
+  assert.equal(result.prompt, "شکل دارو را انتخاب کنید");
+  assert.ok(result.choices.some((choice) => choice.label === "قرص"));
+  assert.ok(result.choices.some((choice) => choice.label === "مطمئن نیستم"));
+  assert.equal("telegram" in result, false);
+  assert.equal("selection" in result, false);
+});
+
+test("botLookupService returns structured patient pricing for web resolved lookup", () => {
+  const result = botLookupService.lookup({
+    query: "لوزارتان",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true,
+    format: "web"
+  });
+
+  assert.equal(result.type, "resolved");
+  assert.equal(result.goodId, "g-1003");
+  assert.equal(result.pricing.consumerUnitPrice, 96000);
+  assert.match(result.pricing.unitPriceLabel, /قیمت هر قرص/);
+  assert.equal("text" in result, false);
+  assert.ok(result.sourceHints.length > 0);
+});

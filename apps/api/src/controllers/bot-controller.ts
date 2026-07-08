@@ -7,18 +7,22 @@ function invalidCallbackDataError() {
   return error;
 }
 
+function parseBotRequest(url) {
+  return {
+    query: url.searchParams.get("q") ?? url.searchParams.get("query") ?? "",
+    documentDate: url.searchParams.get("documentDate") ?? undefined,
+    quantity: url.searchParams.get("quantity") ?? undefined,
+    warehouseId: url.searchParams.get("warehouseId") ?? undefined,
+    includeTechnicalFee: url.searchParams.get("includeTechnicalFee") === "on",
+    format: url.searchParams.get("format") ?? "default"
+  };
+}
+
 export const botController = {
   lookup(request, response) {
     try {
       const url = new URL(request.url ?? "", "http://localhost");
-
-      const result = botLookupService.lookup({
-        query: url.searchParams.get("q") ?? url.searchParams.get("query") ?? "",
-        documentDate: url.searchParams.get("documentDate") ?? undefined,
-        quantity: url.searchParams.get("quantity") ?? undefined,
-        warehouseId: url.searchParams.get("warehouseId") ?? undefined,
-        includeTechnicalFee: url.searchParams.get("includeTechnicalFee") === "on"
-      });
+      const result = botLookupService.lookup(parseBotRequest(url));
 
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(result));
@@ -46,13 +50,15 @@ export const botController = {
       const sessionId = url.searchParams.get("sessionId") ?? callback?.sessionId ?? "";
       const choiceId = url.searchParams.get("choiceId") ?? callback?.choiceId ?? "";
 
+      const requestInput = parseBotRequest(url);
       const result = botLookupService.select({
         sessionId,
         choiceId,
-        documentDate: url.searchParams.get("documentDate") ?? undefined,
-        quantity: url.searchParams.get("quantity") ?? undefined,
-        warehouseId: url.searchParams.get("warehouseId") ?? undefined,
-        includeTechnicalFee: url.searchParams.get("includeTechnicalFee") === "on"
+        documentDate: requestInput.documentDate,
+        quantity: requestInput.quantity,
+        warehouseId: requestInput.warehouseId,
+        includeTechnicalFee: requestInput.includeTechnicalFee,
+        format: requestInput.format
       });
 
       response.setHeader("Content-Type", "application/json");
