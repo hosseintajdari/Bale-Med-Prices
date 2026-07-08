@@ -198,6 +198,7 @@ function resetFormState() {
   state.sessionId = "";
   state.resolvedGoodId = "";
   state.pricing = null;
+  state.moreInfo = null;
   state.query = "";
   formElements.goodId.value = "";
   formElements.documentDate.value = "2026-06-24";
@@ -260,7 +261,30 @@ function renderMessagePanel(message, isError = false) {
   searchResults.append(panel);
 }
 
-function renderPricingResult(pricing) {
+function renderTtacDetailLink(moreInfo) {
+  const ttacDetail = moreInfo?.ttacDetail;
+
+  if (!ttacDetail?.detailUrl) {
+    return "";
+  }
+
+  const label =
+    ttacDetail.availableActions?.find((action) => action.key === "view_ttac_detail")?.label ??
+    "مشاهده اطلاعات دارو در TTAC";
+
+  return `
+    <div class="ttac-link-row">
+      <a
+        class="ttac-link"
+        href="${escapeHtml(ttacDetail.detailUrl)}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >${escapeHtml(label)}</a>
+    </div>
+  `;
+}
+
+function renderPricingResult(pricing, moreInfo = null) {
   const unitPriceLabel = pricing.unitPriceLabel ?? `قیمت هر ${patientUnitLabel(pricing.unitLabel)}`;
   const metrics = [
     [unitPriceLabel, wrapAmount(pricing.consumerUnitPrice)],
@@ -300,6 +324,7 @@ function renderPricingResult(pricing) {
           .join("")}
       </div>
       ${warnings}
+      ${renderTtacDetailLink(moreInfo)}
     </div>
   `;
 }
@@ -314,10 +339,11 @@ function applyResolvedResult(payload) {
 
   state.resolvedGoodId = payload.goodId;
   state.pricing = pricing;
+  state.moreInfo = payload.moreInfo ?? null;
   state.sessionId = "";
   formElements.goodId.value = payload.goodId;
   updateSelectedGoodCard(pricing);
-  renderPricingResult(pricing);
+  renderPricingResult(pricing, state.moreInfo);
   searchResults.innerHTML = "";
   setStatus(searchStatus, "دارو مشخص شد.");
   setStatus(pricingStatus, "قیمت آماده است.");
@@ -487,7 +513,8 @@ async function recalculatePrice() {
     };
 
     state.pricing = pricing;
-    renderPricingResult(pricing);
+    state.moreInfo = null;
+    renderPricingResult(pricing, null);
     updateSelectedGoodCard(pricing);
     setStatus(pricingStatus, "قیمت بروزرسانی شد.");
     syncUrl();

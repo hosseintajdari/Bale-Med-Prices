@@ -361,6 +361,23 @@ body {
   color: #8b4527;
 }
 
+.ttac-link-row {
+  margin-top: 14px;
+}
+
+.ttac-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #eef2f0;
+  border: 1px solid #cfe3d7;
+  color: #174d38;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .is-hidden {
   display: none;
 }
