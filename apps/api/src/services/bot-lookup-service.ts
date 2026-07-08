@@ -2,6 +2,7 @@ import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { botResponsePresenter } from "./bot-response-presenter.ts";
 import { pricingService } from "./pricing-service.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
+import { webResponsePresenter } from "./web-response-presenter.ts";
 import { goodsRepository } from "../repositories/goods-repository.ts";
 
 function buildTtacDetailPlaceholder(selection) {
@@ -46,6 +47,7 @@ function calculateResolved(selection, input) {
     text: presentation.text,
     parseMode: presentation.parseMode,
     copyReady: presentation.copyReady,
+    pricing: webResponsePresenter.buildPatientPricing(pricing),
     sourceHints: pricing.sourceHints,
     warnings: pricing.warnings,
     moreInfo: {
@@ -88,9 +90,18 @@ function toBotResponse(selection, input) {
   return botResponsePresenter.selection(selection);
 }
 
+function finalizeResponse(response, format) {
+  if (format !== "web") {
+    return response;
+  }
+
+  return webResponsePresenter.adapt(response);
+}
+
 export const botLookupService = {
   lookup(input) {
     const query = (input.query ?? "").trim();
+    const format = input.format ?? "default";
 
     if (!query) {
       const error = new Error("Missing required field 'query'");
@@ -98,10 +109,15 @@ export const botLookupService = {
       throw error;
     }
 
-    return toBotResponse(medicineSelectionService.start({ query }), input);
+    return finalizeResponse(
+      toBotResponse(medicineSelectionService.start({ query }), input),
+      format
+    );
   },
 
   select(input) {
+    const format = input.format ?? "default";
+
     if (!input.sessionId) {
       const error = new Error("Missing required field 'sessionId'");
       error.statusCode = 400;
@@ -114,6 +130,9 @@ export const botLookupService = {
       throw error;
     }
 
-    return toBotResponse(medicineSelectionService.continue(input), input);
+    return finalizeResponse(
+      toBotResponse(medicineSelectionService.continue(input), input),
+      format
+    );
   }
 };

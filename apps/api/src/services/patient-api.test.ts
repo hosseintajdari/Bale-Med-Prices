@@ -5,6 +5,7 @@ import { goodsController } from "../controllers/goods-controller.ts";
 import { pricingController } from "../controllers/pricing-controller.ts";
 import { goodsService } from "./goods-service.ts";
 import { pricingService } from "./pricing-service.ts";
+import { selectionHistoryStore } from "./selection-history-store.ts";
 
 function invokeGoodsSearchController(url) {
   let body = "";
@@ -285,4 +286,14 @@ test("pricingController can return telegram-friendly compact payload", async () 
   assert.equal(result.body.parseMode, "plain_text");
   assert.match(result.body.text, /Losartan 50mg Tablet/);
   assert.match(result.body.text, /قیمت هر قرص:/);
+});
+
+test("goodsService search applies learned selection history to ranking", () => {
+  selectionHistoryStore.resetForTest();
+  selectionHistoryStore.recordSuccessfulSelection("استامینوفن", "g-1007");
+
+  const result = goodsService.search({ query: "استامینوفن" });
+
+  assert.ok(result.total >= 2);
+  assert.equal(result.items[0].id, "g-1007");
 });
