@@ -199,11 +199,12 @@ test("botLookupService resolves a selected strength to unit price", () => {
       sourceLabel: "TTAC",
       status: "not_loaded",
       ttacCode: "TTAC-ACET-500-TAB",
+      detailUrl: undefined,
       availableActions: [
         {
           key: "view_ttac_detail",
           label: "مشاهده اطلاعات دارو در TTAC",
-          status: "available"
+          status: "not_configured"
         }
       ]
     }
