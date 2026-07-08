@@ -16,7 +16,7 @@
   --radius-md: 18px;
   --radius-sm: 14px;
   --shadow: 0 20px 60px rgba(31, 42, 36, 0.08);
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Vazirmatn", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 * {
@@ -113,6 +113,8 @@ body {
   padding: 12px 14px;
   background: #ffffff;
   color: var(--ink);
+  direction: auto;
+  text-align: start;
 }
 
 .text-input:focus {
@@ -289,6 +291,24 @@ body {
 
 .metric-card strong {
   font-size: 20px;
+}
+
+.num,
+.mixed-ltr {
+  unicode-bidi: isolate;
+}
+
+.rules-card > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  margin-top: 8px;
+}
+
+.rules-card > div > span {
+  margin-bottom: 0;
+  flex: 0 0 auto;
 }
 
 .metric-card.featured {

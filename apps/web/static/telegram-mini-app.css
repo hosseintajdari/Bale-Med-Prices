@@ -1,0 +1,82 @@
+html.telegram-mini-app {
+  color-scheme: light dark;
+}
+
+html.telegram-mini-app body {
+  background: var(--page-bg);
+}
+
+html.telegram-mini-app .page-shell {
+  max-width: 100%;
+  min-height: 100dvh;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 12px)
+    calc(env(safe-area-inset-right, 0px) + 14px)
+    calc(env(safe-area-inset-bottom, 0px) + 88px)
+    calc(env(safe-area-inset-left, 0px) + 14px);
+}
+
+html.telegram-mini-app .hero {
+  margin-bottom: 18px;
+}
+
+html.telegram-mini-app .eyebrow {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html.telegram-mini-app .hero h1 {
+  font-size: clamp(1.65rem, 7vw, 2.2rem);
+  line-height: 1.25;
+}
+
+html.telegram-mini-app .hero-copy {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+html.telegram-mini-app .workspace {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+html.telegram-mini-app .panel {
+  padding: 18px;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+html.telegram-mini-app .panel-search,
+html.telegram-mini-app .panel-pricing {
+  border-width: 1px;
+}
+
+html.telegram-mini-app .pricing-form,
+html.telegram-mini-app .result-grid {
+  grid-template-columns: 1fr;
+}
+
+html.telegram-mini-app .primary-button.telegram-hidden {
+  display: none;
+}
+
+html.telegram-mini-app.telegram-dark {
+  color-scheme: dark;
+}
+
+html.telegram-mini-app.telegram-dark .search-card,
+html.telegram-mini-app.telegram-dark .text-input,
+html.telegram-mini-app.telegram-dark .metric-card,
+html.telegram-mini-app.telegram-dark .rules-card,
+html.telegram-mini-app.telegram-dark .selected-good,
+html.telegram-mini-app.telegram-dark .hint-chip {
+  background: color-mix(in srgb, var(--tg-secondary-bg, #1f2a24) 88%, white 12%);
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+html.telegram-mini-app.telegram-dark .secondary-button {
+  background: transparent;
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--ink) 24%, transparent);
+}
