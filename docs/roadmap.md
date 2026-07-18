@@ -2,57 +2,58 @@
 
 ## Scope
 
-The scope of this project is finding consumer medicine price for end users, starting with patients.
+Patient-facing pharmacy services: **price**, **authenticity**, **drug info**, and **rare drug search**.
 
-The product should:
+Deadline: **Ghaza Daru accreditation delivery — 5 Shahrivar 1405 (~2026-08-27)**.
 
-- help patients find medicine price quickly
-- support Persian and English search
-- return unit price clearly
-- prepare one shared backend for web and messaging bots
+See [DELIVERY-GHAZA-DARU.md](DELIVERY-GHAZA-DARU.md) and [ADR-0002](adr/0002-parallel-delivery-ghaza-daru.md).
 
 ## Product Direction
 
-The web app is the first delivery surface, but it is not the final destination.
-The same search and pricing core should later power:
+One channel-neutral API powers:
 
-- `Telegram`
-- `Bale`
-- `WhatsApp`
+- Web PWA (mobile-first)
+- Bale bot (this project token)
+- Telegram + WhatsApp (Plus, after Must)
+
+**Zero coupling with BaleMed** (`bale-med` repo).
 
 ## Source Responsibilities
 
-- `Qanoon`: richer pricing logic and practical output for consumer price
-- `TTAC`: main reference for complete medicine information for patients
-- `Payam Darousaz`: secondary pricing or reference input with its own logic
+- `Qanoon`: consumer unit price
+- `TTAC`: medicine identity, drug info, rare drug, enrichment
+- `Ghaza Daru` web: barcode authenticity (no API — adapter only)
+- `Payam Darousaz`: secondary reference
 
-## Build Order
+## Build Order (delivery sprint)
 
-### Phase 1
+### Sprint W1 — Jul 19–24
 
-- stabilize patient-facing search
-- make Persian and English lookup reliable
-- make unit price output explicit
-- reduce internal-only fields in the patient UI
+- Module scaffold (`pricing`, `authenticity`, `drug-info`, `rare-drug`)
+- Web PWA menu + price E2E
+- Bale bot menu + price E2E
 
-### Phase 2
+### Sprint W2 — Jul 25–31
 
-- add medicine alias model
-- define source-priority rules
-- add `TTAC` enrichment placeholders in the API contract
-- support quantity-to-total conversion while keeping unit price primary
+- Authenticity + drug-info modules
+- TTAC/Ghaza Daru web adapter
 
-### Phase 3
+### Sprint W3 — Aug 1–7
 
-- design bot-friendly API responses
-- add compact response formats for `Telegram`
-- keep the same core for `Bale`
-- document `WhatsApp` constraints for later rollout
+- Rare-drug module
+- Integration tests (4 modules × web + Bale)
+
+### Sprint W4 — Aug 8–15
+
+- UX polish + evaluator guide + rehearsal
+
+### Sprint W5 — Aug 16–27
+
+- Plus channels + release tag + accreditation demo
 
 ## Immediate Next Engineering Tasks
 
-- reshape API responses around patient-facing fields
-- expand search data model for Persian and English aliases
-- separate internal pricing fields from consumer-facing fields
-- add source metadata to search and pricing results
-- define bot response contracts before channel integrations begin
+- Create `apps/api/src/modules/` layout
+- Add `adapters/ttac-web/` shared adapter
+- Bale channel adapter with four-item menu
+- Placeholder `POST /verify/barcode` until Ghaza Daru specs arrive
