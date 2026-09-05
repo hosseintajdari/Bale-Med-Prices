@@ -11,6 +11,10 @@ npm test
 npm run dev:api
 ```
 
+GitHub CI runs `npm test` on a standard hosted Ubuntu runner for pushes to
+`main`, pull requests, and manual dispatch. The retired Qodana and offline
+self-hosted workflows are no longer part of this repository.
+
 ## Goals
 
 - Find consumer price quickly for patients
