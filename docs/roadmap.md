@@ -4,9 +4,9 @@
 
 Patient-facing pharmacy services: **price**, **authenticity**, **drug info**, and **rare drug search**.
 
-Deadline: **Ghaza Daru accreditation delivery — 5 Shahrivar 1405 (~2026-08-27)**.
-
-See [DELIVERY-GHAZA-DARU.md](DELIVERY-GHAZA-DARU.md) and [ADR-0002](adr/0002-parallel-delivery-ghaza-daru.md).
+See [ADR-0002](adr/0002-parallel-delivery-ghaza-daru.md) and
+[`agents/EMBEDNET-OS.md`](agents/EMBEDNET-OS.md) for the portfolio boundary and
+temporary GitHub-first recovery rule.
 
 ## Product Direction
 
@@ -25,35 +25,37 @@ One channel-neutral API powers:
 - `Ghaza Daru` web: barcode authenticity (no API — adapter only)
 - `Payam Darousaz`: secondary reference
 
-## Build Order (delivery sprint)
+## Outcome gates
 
-### Sprint W1 — Jul 19–24
+### P0 — delivery foundation
 
 - Module scaffold (`pricing`, `authenticity`, `drug-info`, `rare-drug`)
 - Web PWA menu + price E2E
 - Bale bot menu + price E2E
 
-### Sprint W2 — Jul 25–31
+### P1 — source-backed expansion
 
 - Authenticity + drug-info modules
 - TTAC/Ghaza Daru web adapter
-
-### Sprint W3 — Aug 1–7
-
 - Rare-drug module
-- Integration tests (4 modules × web + Bale)
+- Integration tests across the four modules and web/Bale surfaces
 
-### Sprint W4 — Aug 8–15
+### P2 — owner-reviewed release readiness
 
 - UX polish + evaluator guide + rehearsal
+- Consider Plus channels and a release only after owner review of the prior
+  gates, source readiness, and channel-specific safety constraints.
 
-### Sprint W5 — Aug 16–27
+## One next outcome
 
-- Plus channels + release tag + accreditation demo
+Produce a reviewable P0 delivery-foundation slice: the module layout, price
+search flow, and clear boundary between source adapters and channel adapters.
 
-## Immediate Next Engineering Tasks
+## Retained actionable work
 
-- Create `apps/api/src/modules/` layout
-- Add `adapters/ttac-web/` shared adapter
-- Bale channel adapter with four-item menu
-- Placeholder `POST /verify/barcode` until Ghaza Daru specs arrive
+- Create `apps/api/src/modules/` layout.
+- Add `adapters/ttac-web/` as a source adapter, preserving the channel-neutral
+  core.
+- Build the Bale channel adapter with the four-item menu.
+- Keep `POST /verify/barcode` as a placeholder until source specifications are
+  available; do not claim verification capability before then.
