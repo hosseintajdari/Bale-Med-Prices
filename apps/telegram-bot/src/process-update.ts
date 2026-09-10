@@ -22,7 +22,43 @@ export async function processTelegramUpdate(config, update) {
     return;
   }
 
+  emitShadowTrace(message);
+
   await processTextMessage(config, message.chat.id, message.text);
+}
+
+function emitShadowTrace(message) {
+  const payload = {
+    engine_id: "bale-med-prices",
+    shadow_item: {
+      id: `bmp-${Date.now()}`,
+      sessionId: String(message.chat?.id || "unknown"),
+      channel: "telegram",
+      senderDisplay: String(message.chat?.id || "unknown"),
+      userMessage: message.text || "",
+      proposedReply: "استعلام قیمت دارو...",
+      timestamp: new Date().toISOString(),
+      confidenceScore: 0.99,
+      riskLevel: "safe",
+      status: "pending",
+      deterministicRuleApplied: null
+    },
+    pipeline_traces: [
+      {
+        stage: "GATEWAY_INGEST",
+        title: "Received via Bot Webhook",
+        status: "passed",
+        detail: "Parsed successfully",
+        durationMs: 5
+      }
+    ]
+  };
+
+  fetch("http://localhost:3001/api/pipeline/ingest/shadow-trace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
 }
 
 async function processCallbackQuery(config, callbackQuery) {
