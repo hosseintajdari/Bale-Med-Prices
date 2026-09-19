@@ -66,6 +66,19 @@ const server = createServer(async (request, response) => {
     }
   }
 
+  if (request.method === "GET" && requestPath === "/health") {
+    response.statusCode = 200;
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.end(
+      JSON.stringify({
+        status: "ok",
+        service: "bale-med-prices",
+        timestamp: new Date().toISOString()
+      })
+    );
+    return;
+  }
+
   if (request.method === "POST" && requestPath === "/telegram/webhook") {
     await telegramWebhookController.handle(request, response);
     return;

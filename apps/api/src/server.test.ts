@@ -54,6 +54,15 @@ test("HTTP server handles bot lookup endpoint", async () => {
   assert.ok("replyText" in data || "kind" in data || "items" in data || "text" in data);
 });
 
+test("HTTP server handles /health liveness probe", async () => {
+  const response = await fetch(`${baseUrl}/health`);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.status, "ok");
+  assert.equal(data.service, "bale-med-prices");
+  assert.ok(data.timestamp);
+});
+
 test("HTTP server returns 404 for unknown routes", async () => {
   const response = await fetch(`${baseUrl}/non-existent-route-for-test`);
   assert.equal(response.status, 404);
