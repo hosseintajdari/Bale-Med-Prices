@@ -6,6 +6,7 @@ import {
   buildStartReply,
   extractCommand,
   mergeWebAppOpener,
+  readTelegramBotConfig,
   resolveBotReply
 } from "../src/telegram-bot-lib.ts";
 
@@ -16,13 +17,15 @@ test("buildStartReply includes web_app button", () => {
   assert.match(reply.text, /خوش آمدید/);
 });
 
-test("extractCommand ignores bot username suffix", () => {
+test("extractCommand ignores bot username suffix and handles casing", () => {
   assert.equal(extractCommand("/start@MyBot"), "/start");
-  assert.equal(extractCommand("/help"), "/help");
+  assert.equal(extractCommand("/HELP"), "/help");
   assert.equal(extractCommand("amoxicillin"), null);
+  assert.equal(extractCommand(""), null);
+  assert.equal(extractCommand(null), null);
 });
 
-test("apiResponseToTelegramMessage maps telegram inline keyboard", () => {
+test("apiResponseToTelegramMessage maps telegram inline keyboard and handles not_found", () => {
   const message = apiResponseToTelegramMessage({
     text: "یک گزینه را انتخاب کنید",
     telegram: {
@@ -33,6 +36,22 @@ test("apiResponseToTelegramMessage maps telegram inline keyboard", () => {
   });
 
   assert.deepEqual(message.reply_markup.inline_keyboard[0][0].callback_data, "ms:s1:c1");
+
+  const notFoundMessage = apiResponseToTelegramMessage({
+    type: "not_found",
+    query: "unknown-medicine"
+  });
+  assert.match(notFoundMessage.text, /unknown-medicine/);
+
+  const snakeCaseReplyMarkup = apiResponseToTelegramMessage({
+    text: "گزینه‌ها",
+    telegram: {
+      reply_markup: {
+        inline_keyboard: [[{ text: "تست", callback_data: "test" }]]
+      }
+    }
+  });
+  assert.deepEqual(snakeCaseReplyMarkup.reply_markup.inline_keyboard[0][0].callback_data, "test");
 });
 
 test("mergeWebAppOpener appends web_app row once", () => {
@@ -56,4 +75,45 @@ test("resolveBotReply nudges unknown text toward the web app", () => {
 
   assert.match(reply.text, /نام دارو را بفرستید/);
   assert.equal(reply.reply_markup.inline_keyboard.length, 1);
+});
+
+test("readTelegramBotConfig enforces token and HTTPS URLs", () => {
+  assert.throws(() => readTelegramBotConfig({}), /TELEGRAM_BOT_TOKEN is required/);
+
+  assert.throws(
+    () => readTelegramBotConfig({ TELEGRAM_BOT_TOKEN: "token123" }),
+    /WEB_APP_URL is required/
+  );
+
+  assert.throws(
+    () =>
+      readTelegramBotConfig({
+        TELEGRAM_BOT_TOKEN: "token123",
+        WEB_APP_URL: "http://insecure.com"
+      }),
+    /WEB_APP_URL must use HTTPS/
+  );
+
+  assert.throws(
+    () =>
+      readTelegramBotConfig({
+        TELEGRAM_BOT_TOKEN: "token123",
+        WEB_APP_URL: "https://secure.com/app",
+        TELEGRAM_WEBHOOK_URL: "http://insecure.com/webhook"
+      }),
+    /TELEGRAM_WEBHOOK_URL must use HTTPS/
+  );
+
+  const valid = readTelegramBotConfig({
+    TELEGRAM_BOT_TOKEN: "token123",
+    WEB_APP_URL: "https://secure.com/app",
+    TELEGRAM_WEBHOOK_URL: "https://secure.com/webhook",
+    TELEGRAM_WEBHOOK_SECRET: "secret99"
+  });
+
+  assert.equal(valid.token, "token123");
+  assert.equal(valid.webAppUrl, "https://secure.com/app");
+  assert.equal(valid.webhookUrl, "https://secure.com/webhook");
+  assert.equal(valid.webhookSecret, "secret99");
+  assert.equal(valid.useWebhook, true);
 });

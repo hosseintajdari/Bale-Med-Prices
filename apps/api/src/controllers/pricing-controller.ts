@@ -34,7 +34,7 @@ export const pricingController = {
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(result));
     } catch (error) {
-      response.statusCode = error.statusCode ?? 500;
+      response.statusCode = error.statusCode ?? (error instanceof SyntaxError ? 400 : 500);
       response.setHeader("Content-Type", "application/json");
       response.end(
         JSON.stringify({
