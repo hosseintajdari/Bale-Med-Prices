@@ -1,6 +1,6 @@
-import { loadTelegramBotConfig } from "../../telegram-bot/src/config.ts";
-import { processTelegramUpdate } from "../../telegram-bot/src/process-update.ts";
-import { registerTelegramWebhook } from "../../telegram-bot/src/telegram-bot-lib.ts";
+import { loadTelegramBotConfig } from "../../../telegram-bot/src/config.ts";
+import { processTelegramUpdate } from "../../../telegram-bot/src/process-update.ts";
+import { registerTelegramWebhook } from "../../../telegram-bot/src/telegram-bot-lib.ts";
 
 async function readJsonBody(request) {
   const chunks = [];
@@ -15,7 +15,16 @@ async function readJsonBody(request) {
     return null;
   }
 
-  return JSON.parse(rawBody);
+  try {
+    return JSON.parse(rawBody);
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      const syntaxError = new Error("Malformed JSON payload");
+      (syntaxError as unknown as { statusCode: number }).statusCode = 400;
+      throw syntaxError;
+    }
+    throw err;
+  }
 }
 
 function getRequestHeader(request, name) {
@@ -65,7 +74,8 @@ export const telegramWebhookController = {
       response.statusCode = 200;
       response.end("ok");
     } catch (error) {
-      response.statusCode = 500;
+      const statusCode = (error as { statusCode?: number })?.statusCode || (error instanceof SyntaxError ? 400 : 500);
+      response.statusCode = statusCode;
       response.setHeader("Content-Type", "application/json");
       response.end(
         JSON.stringify({

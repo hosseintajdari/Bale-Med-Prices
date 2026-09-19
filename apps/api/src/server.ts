@@ -100,8 +100,18 @@ const server = createServer(async (request, response) => {
   response.end("Not found");
 });
 
-server.listen(port, () => {
-  maybeRegisterTelegramWebhookOnStartup().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+export { server };
+
+const isMain = Boolean(
+  process.argv[1] &&
+    (process.argv[1].endsWith("server.ts") ||
+      process.argv[1].endsWith("server.js"))
+);
+
+if (isMain && process.env.NODE_ENV !== "test") {
+  server.listen(port, () => {
+    maybeRegisterTelegramWebhookOnStartup().catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+    });
   });
-});
+}
