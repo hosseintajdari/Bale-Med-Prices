@@ -104,8 +104,18 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === "POST" && request.url === "/pricing/calculate") {
+  if (request.method === "POST" && requestPath === "/pricing/calculate") {
     await pricingController.calculate(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && requestPath === "/pricing/cache/stats") {
+    pricingController.cacheStats(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && requestPath === "/pricing/cache/clear") {
+    pricingController.clearCache(request, response);
     return;
   }
 

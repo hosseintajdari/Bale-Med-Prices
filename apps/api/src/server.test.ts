@@ -173,3 +173,58 @@ test("HTTP server handles telegram-formatted goods search", async () => {
   assert.match(data.text, /Search:/);
 });
 
+test("HTTP server performs price response caching with X-Cache headers and stats", async () => {
+  // Clear cache initially
+  const clearRes = await fetch(`${baseUrl}/pricing/cache/clear`, { method: "POST" });
+  assert.equal(clearRes.status, 200);
+
+  const payload = {
+    goodId: "g-1004",
+    documentDate: "2026-06-24",
+    quantity: 2,
+    includeTechnicalFee: true
+  };
+
+  // 1. Initial request -> Cache MISS
+  const firstRes = await fetch(`${baseUrl}/pricing/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  assert.equal(firstRes.status, 200);
+  assert.equal(firstRes.headers.get("x-cache"), "MISS");
+  const firstData = await firstRes.json();
+  assert.ok(firstData.consumerTotalPrice);
+
+  // 2. Subsequent identical request -> Cache HIT
+  const secondRes = await fetch(`${baseUrl}/pricing/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  assert.equal(secondRes.status, 200);
+  assert.equal(secondRes.headers.get("x-cache"), "HIT");
+  const secondData = await secondRes.json();
+  assert.deepEqual(secondData, firstData);
+
+  // 3. Bypass cache via Cache-Control: no-cache header
+  const bypassRes = await fetch(`${baseUrl}/pricing/calculate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache"
+    },
+    body: JSON.stringify(payload)
+  });
+  assert.equal(bypassRes.status, 200);
+  assert.equal(bypassRes.headers.get("x-cache"), "MISS");
+
+  // 4. Inspect cache stats endpoint
+  const statsRes = await fetch(`${baseUrl}/pricing/cache/stats`);
+  assert.equal(statsRes.status, 200);
+  const stats = await statsRes.json();
+  assert.ok(stats.hits >= 1);
+  assert.ok(stats.size >= 1);
+});
+
+
