@@ -1,4 +1,5 @@
 import { goodsService } from "../services/goods-service.ts";
+import { RateLimitedError } from "../services/aggregator/types.ts";
 
 function parseSearchRequest(url) {
   const parsed = new URL(url ?? "", "http://localhost");
@@ -21,8 +22,9 @@ function buildTelegramSearchText(items, query) {
   const lines = [`Search: ${query || "all medicines"}`, `Matches: ${items.length}`];
 
   for (const item of items.slice(0, 5)) {
+    const webTag = item.webSource ? ` [web: ${item.webSourceName}]` : "";
     lines.push(
-      `- ${item.title} | ${item.persianTitle} | ${item.unitLabel} | ${item.consumerUnitPrice}`
+      `- ${item.title} | ${item.persianTitle} | ${item.unitLabel} | ${item.consumerUnitPrice}${webTag}`
     );
   }
 
@@ -49,15 +51,44 @@ function toTelegramSearchResponse(result, query) {
   };
 }
 
-export const goodsController = {
-  search(request, response) {
-    const input = parseSearchRequest(request.url);
-    const searchResult = goodsService.search({ query: input.query });
-    const result =
-      input.format === "telegram" ? toTelegramSearchResponse(searchResult, input.query) : searchResult;
+function sendJson(response, statusCode, payload, extraHeaders) {
+  response.statusCode = statusCode;
+  response.setHeader("Content-Type", "application/json");
+  for (const [key, value] of Object.entries(extraHeaders ?? {})) {
+    response.setHeader(key, value);
+  }
+  response.end(JSON.stringify(payload));
+}
 
-    response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify(result));
+export const goodsController = {
+  /**
+   * Local catalog first; empty local results fall back to the live web
+   * price aggregator. Rate-limited sources → 429 so callers back off.
+   */
+  async search(request, response) {
+    const input = parseSearchRequest(request.url);
+
+    try {
+      const searchResult = await goodsService.searchWithWebFallback({ query: input.query });
+      const result =
+        input.format === "telegram"
+          ? toTelegramSearchResponse(searchResult, input.query)
+          : searchResult;
+
+      sendJson(response, 200, result, {
+        "X-Search-Source": searchResult.webFallback ? "web-aggregator" : "catalog"
+      });
+    } catch (error) {
+      if (error instanceof RateLimitedError) {
+        sendJson(response, 429, {
+          error: "A price source is rate-limiting us. Please retry shortly."
+        });
+        return;
+      }
+      sendJson(response, error.statusCode ?? 500, {
+        error: error.message ?? "Search failed"
+      });
+    }
   },
 
   getById(request, response) {
