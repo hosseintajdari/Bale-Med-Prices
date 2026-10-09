@@ -1,16 +1,22 @@
+/**
+ * مد اگریگیتور — Telegram price bot entry point.
+ *
+ * Twin of apps/bale-bot/src/bot.ts. Thin client over GET /goods/search.
+ * Polling is the default (works with just TELEGRAM_BOT_TOKEN, no public
+ * HTTPS needed). Set TELEGRAM_WEBHOOK_URL for webhook mode — then run
+ * the API server to receive updates.
+ */
 import { pathToFileURL } from "node:url";
 import { loadTelegramBotConfig } from "./config.ts";
 import { processTelegramUpdate } from "./process-update.ts";
 import {
   callTelegramApi,
-  configureDefaultMenuButton,
   deleteTelegramWebhook,
   registerTelegramWebhook
 } from "./telegram-bot-lib.ts";
 
-async function pollUpdates(config) {
+async function pollUpdates(config: { token: string; apiBaseUrl: string }) {
   let offset = 0;
-
   console.log("Telegram bot polling started.");
 
   while (true) {
@@ -20,9 +26,8 @@ async function pollUpdates(config) {
       allowed_updates: ["message", "callback_query"]
     });
 
-    for (const update of updates) {
-      offset = update.update_id + 1;
-
+    for (const update of updates ?? []) {
+      offset = (update.update_id ?? offset) + 1;
       try {
         await processTelegramUpdate(config, update);
       } catch (error) {
@@ -33,8 +38,6 @@ async function pollUpdates(config) {
 }
 
 export async function startTelegramBot(config = loadTelegramBotConfig()) {
-  await configureDefaultMenuButton(config.token, config.webAppUrl);
-
   if (config.useWebhook) {
     await registerTelegramWebhook(config.token, config.webhookUrl, config.webhookSecret);
     console.log(`Telegram webhook registered at ${config.webhookUrl}`);
