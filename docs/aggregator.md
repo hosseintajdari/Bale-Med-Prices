@@ -32,3 +32,21 @@ TypeScript — پورت در شاخه‌ی `aggregator-ts-port` در جریان�
 
 ## نمونه‌ی مرجع
 پروتوتایپ پایتون در `~/workspace/bale-med-price/` — فاز صفر و یک سبز (API + فرانت + سه آداپتر).
+
+## وضعیت پورت TypeScript (۱۷ مهر ۱۴۰۵)
+پورت کامل شد — شاخه‌ی `aggregator-ts-port` (مرج نشده؛ با گرگ پیره):
+
+**فایل‌های جدید** (`apps/api/src/services/aggregator/`):
+- `types.ts` — قرارداد `SourceAdapter` + `PriceHit` (با `crawledAt` اجباری: قیمت بی‌تاریخ از نظر تایپی غیرممکنه) + `tomanToRial` + `RateLimitedError`
+- `http.ts` — کلاینت مؤدبانه: فاصله بین درخواست‌ها، توقف روی 429/403
+- `google-discovery.ts` — کشف لینک کاندید (معادل DuckDuckGo نسخه پایتون)
+- `torob-adapter.ts` — API عمومی ترب، بدون لاگین
+- `delgarm-adapter.ts` — لیست قیمت روزانه + تطبیق فازی نام
+- `aggregator-service.ts` — رجیستری آداپترها
+- `aggregator.test.ts` — ۱۰ تست واحد (سبز)
+
+**اتصال به سرچ موجود** (نه سیستم موازی):
+- `goods-service.ts`: متد `searchWithWebFallback` — اول کاتالوگ محلی، اگه خالی بود آگریگیتور وب؛ آیتم‌های وب با `webSource: true` مشخصن
+- `goods-controller.ts`: `GET /goods/search` حالا async؛ هدر `X-Search-Source: catalog | web-aggregator`؛ خطای 429 وقتی منبع محدودمون کنه
+
+**شاهد واقعی:** آداپتر ترب لایو ۳ قیمت واقعی برگردوند (مثلاً ۱٬۲۴۰٬۰۰۰ ریال). دلگرم امروز ۰ هیت داد — DuckDuckGo کوئری‌های `site:` رو محدود کرده (ناپایداری بالادستی، نه باگ پورت).
