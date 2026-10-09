@@ -9,6 +9,10 @@ import {
   maybeRegisterTelegramWebhookOnStartup,
   telegramWebhookController
 } from "./controllers/telegram-webhook-controller.ts";
+import {
+  maybeRegisterBaleWebhookOnStartup,
+  baleWebhookController
+} from "./controllers/bale-webhook-controller.ts";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const staticDirectory = path.resolve(currentDirectory, "../../web/static");
@@ -84,8 +88,13 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && (requestPath === "/bale/webhook" || requestPath === "/webhook/bale")) {
+    await baleWebhookController.handle(request, response);
+    return;
+  }
+
   if (request.method === "GET" && request.url.startsWith("/goods/search")) {
-    goodsController.search(request, response);
+    await goodsController.search(request, response);
     return;
   }
 
@@ -134,6 +143,9 @@ const isMain = Boolean(
 if (isMain && process.env.NODE_ENV !== "test") {
   server.listen(port, () => {
     maybeRegisterTelegramWebhookOnStartup().catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+    });
+    maybeRegisterBaleWebhookOnStartup().catch((error) => {
       console.error(error instanceof Error ? error.message : error);
     });
   });

@@ -7,7 +7,7 @@ import { goodsService } from "./goods-service.ts";
 import { pricingService } from "./pricing-service.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
 
-function invokeGoodsSearchController(url) {
+async function invokeGoodsSearchController(url) {
   let body = "";
   const response = {
     statusCode: 200,
@@ -17,7 +17,7 @@ function invokeGoodsSearchController(url) {
     }
   };
 
-  goodsController.search({ url }, response);
+  await goodsController.search({ url }, response);
 
   return {
     statusCode: response.statusCode,
@@ -206,8 +206,8 @@ test("goodsService search tolerates small typos in patient-entered dosage forms"
   );
 });
 
-test("goodsController can return telegram-friendly search payload", () => {
-  const result = invokeGoodsSearchController("/goods/search?q=vit&format=telegram");
+test("goodsController can return telegram-friendly search payload", async () => {
+  const result = await invokeGoodsSearchController("/goods/search?q=vit&format=telegram");
 
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.copyReady, true);
@@ -217,8 +217,8 @@ test("goodsController can return telegram-friendly search payload", () => {
   assert.equal(result.body.items[0].id, "g-1005");
 });
 
-test("goodsController default search keeps source metadata but hides internal fields", () => {
-  const result = invokeGoodsSearchController("/goods/search?q=los");
+test("goodsController default search keeps source metadata but hides internal fields", async () => {
+  const result = await invokeGoodsSearchController("/goods/search?q=los");
 
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.total, 1);

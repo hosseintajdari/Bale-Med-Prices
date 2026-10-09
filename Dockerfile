@@ -6,6 +6,7 @@ COPY package.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/telegram-bot/package.json apps/telegram-bot/
+COPY apps/bale-bot/package.json apps/bale-bot/
 COPY packages/domain/package.json packages/domain/
 
 COPY apps ./apps
