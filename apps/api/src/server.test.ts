@@ -110,6 +110,17 @@ test("HTTP server returns 503 for telegram webhook when bot unconfigured", async
   assert.ok(data.error);
 });
 
+test("HTTP server returns 503 for bale webhook when bot unconfigured", async () => {
+  const response = await fetch(`${baseUrl}/bale/webhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ update_id: 100 })
+  });
+  assert.equal(response.status, 503);
+  const data = await response.json();
+  assert.ok(data.error);
+});
+
 test("HTTP server handles bot select endpoint and callback data validation", async () => {
   const invalidRes = await fetch(`${baseUrl}/bot/select?callbackData=bad-format`);
   assert.equal(invalidRes.status, 400);

@@ -1,1 +1,18 @@
-{"name": "bale-med-prices", "private": true, "scripts": {"build": "echo build not wired yet", "dev:api": "node --experimental-strip-types apps/api/src/server.ts", "dev:bale-bot": "node --experimental-strip-types apps/bale-bot/src/bot.ts", "dev:telegram-bot": "node --experimental-strip-types apps/telegram-bot/src/bot.ts", "dev:web": "echo web app shell exists but no frontend runtime is wired yet", "test": "node --experimental-strip-types --test packages/domain/src/**/*.test.ts apps/api/src/**/*.test.ts apps/telegram-bot/src/**/*.test.ts apps/bale-bot/src/**/*.test.ts"}, "version": "0.1.0", "workspaces": ["apps/*", "packages/*"], "type": "module"}
+{
+  "name": "bale-med-prices",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "node --experimental-strip-types apps/api/src/server.ts",
+    "dev:telegram-bot": "node --experimental-strip-types apps/telegram-bot/src/bot.ts",
+    "dev:bale-bot": "node --experimental-strip-types apps/bale-bot/src/bot.ts",
+    "dev:web": "echo web app shell exists but no frontend runtime is wired yet",
+    "build": "echo build not wired yet",
+    "test": "node --experimental-strip-types --test 'packages/domain/src/**/*.test.ts' 'apps/api/src/**/*.test.ts' 'apps/telegram-bot/src/**/*.test.ts' 'apps/bale-bot/src/**/*.test.ts'"
+  }
+}

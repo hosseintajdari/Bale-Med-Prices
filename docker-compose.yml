@@ -4,7 +4,10 @@ services:
     ports:
       - "${PORT:-4000}:4000"
     env_file:
-      - .env.telegram
+      - path: .env.telegram
+        required: false
+      - path: .env.bale
+        required: false
     environment:
       PORT: 4000
       API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:4000}
