@@ -1,56 +1,31 @@
 # GitHub Push Notes
 
-## Current local status
+## Environment & Remote Status
 
-Local branch: `main`
+- Remote Repository: `https://github.com/hosseintajdari/Bale-Med-Prices.git`
+- Active Branch: `main`
+- Host: Linux Remote with authenticated `gh` CLI
 
-Local commits prepared after the last known pushed commit:
+## Verification & Test Results
 
-- `35c15a1 Improve patient medicine search tolerance`
-- `64a00c8 Normalize patient-entered strength units`
-- `3c5522b Expand patient search quality coverage`
-- `932e5f6 Make patient search quality tests data driven`
-- `819714b Add patient search punctuation coverage`
+Run all tests from repository root:
 
-## Verification
-
-Run from `C:\Users\hosse\Documents\قیمت\BaleMedPrices`:
-
-```powershell
+```bash
 npm test
 ```
 
-Latest local result:
+Verification status:
+- Total tests: 111
+- Passing: 111
+- Failing: 0
+- Test suites covered: domain pricing rules, catalog search normalization, HTTP server & health, bot lookup & selection, price caching, live web aggregator, Telegram bot, Bale bot
+- GitHub Actions CI: Green (Runs on push to `main` and all pull requests)
 
-- 34 tests passed
-- 0 tests failed
+## Git Workflow Guidelines
 
-## Why GitHub push is pending
-
-`git push origin main` currently reaches Git credential handling and then hangs or fails because no GitHub credential is available to the terminal session.
-
-The GitHub MCP connector also became unavailable with a transport error while trying to publish through the API.
-
-## Manual push commands
-
-If Git reports dubious ownership first:
-
-```powershell
-git config --global --add safe.directory "C:/Users/hosse/Documents/قیمت/BaleMedPrices"
-```
-
-Then:
-
-```powershell
-cd "C:\Users\hosse\Documents\قیمت\BaleMedPrices"
-git status
-git log --oneline -5
-git push origin main
-```
-
-If authentication is needed:
-
-```powershell
-gh auth login
-git push origin main
-```
+1. Work in feature branches: `git checkout -b <branch-name>`
+2. Test thoroughly: `npm test`
+3. Commit with conventional commit messages: `git commit -m "feat/fix(...): ..."`
+4. Push and open PR: `git push -u origin <branch-name> && gh pr create`
+5. Verify CI checks: `gh pr checks <PR_NUM>`
+6. Merge PR cleanly: `gh pr merge <PR_NUM> --merge --delete-branch`

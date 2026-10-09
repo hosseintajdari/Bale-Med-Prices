@@ -13,8 +13,9 @@ temporary GitHub-first recovery rule.
 One channel-neutral API powers:
 
 - Web PWA (mobile-first)
-- Bale bot (this project token)
-- Telegram + WhatsApp (Plus, after Must)
+- Bale bot (this project token) — twin of Telegram bot
+- Telegram bot (polling / webhook)
+- WhatsApp (scheduled for future phase)
 
 **Zero coupling with BaleMed** (`bale-med` repo).
 
@@ -24,17 +25,22 @@ One channel-neutral API powers:
 - `TTAC`: medicine identity, drug info, rare drug, enrichment
 - `Ghaza Daru` web: barcode authenticity (no API — adapter only)
 - `Payam Darousaz`: secondary reference
+- `Torob` & `Delgarm`: live public price aggregator fallback
 
 ## Outcome gates
 
-### P0 — delivery foundation
+### P0 — delivery foundation (Delivered ✓)
 
-- Module scaffold (`pricing`, `authenticity`, `drug-info`, `rare-drug`)
-- Web PWA menu + price E2E
-- Bale bot menu + price E2E
+- Module scaffold (`pricing`, `catalog search`, `aggregator fallback`)
+- Web API core endpoints (`/goods/search`, `/goods/:id`, `/pricing/calculate`, `/health`)
+- Bale bot with doctor-grade price cards and one-tap copy button (`npm run dev:bale-bot`)
+- Telegram bot twin with full parity (`npm run dev:telegram-bot`)
+- Webhook controllers for both Bale and Telegram (`/bale/webhook`, `/telegram/webhook`)
+- 111 passing tests across domain rules, API, aggregator, and bots
 
-### P1 — source-backed expansion
+### P1 — source-backed expansion (In Progress)
 
+- Payam Darousaz & Darukade official adapters (ADR-0005 trusted sources)
 - Authenticity + drug-info modules
 - TTAC/Ghaza Daru web adapter
 - Rare-drug module
@@ -43,19 +49,4 @@ One channel-neutral API powers:
 ### P2 — owner-reviewed release readiness
 
 - UX polish + evaluator guide + rehearsal
-- Consider Plus channels and a release only after owner review of the prior
-  gates, source readiness, and channel-specific safety constraints.
-
-## One next outcome
-
-Produce a reviewable P0 delivery-foundation slice: the module layout, price
-search flow, and clear boundary between source adapters and channel adapters.
-
-## Retained actionable work
-
-- Create `apps/api/src/modules/` layout.
-- Add `adapters/ttac-web/` as a source adapter, preserving the channel-neutral
-  core.
-- Build the Bale channel adapter with the four-item menu.
-- Keep `POST /verify/barcode` as a placeholder until source specifications are
-  available; do not claim verification capability before then.
+- Consider WhatsApp channel and public deployment after owner review of source readiness and safety constraints.
