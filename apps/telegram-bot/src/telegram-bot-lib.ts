@@ -1,211 +1,225 @@
-const TELEGRAM_API_BASE = "https://api.telegram.org";
-const DEFAULT_DOCUMENT_DATE = "2026-06-24";
+/**
+ * Telegram bot library — thin client over the مد اگریگیتور pricing API.
+ *
+ * Twin of apps/bale-bot (same patterns, Telegram endpoints):
+ * https://api.telegram.org/bot<token>/<method>. Inline keyboards +
+ * callback_data + Markdown code spans behave exactly like the Bale twin.
+ *
+ * Privacy rule (حریم خصوصی صاحب): the bot NEVER reveals the owner's
+ * identity — no name, no reference, no "built by". If asked "who owns
+ * this bot?", the answer is: «یه ابزار صنفیه، مستقل از پخش‌ها.» — then silence.
+ */
+import {
+  formatPriceBlock,
+  formatPriceFa,
+  toPersianDigits
+} from "../../../packages/domain/src/format-price.ts";
 
-export function buildStartReply(webAppUrl) {
+const TELEGRAM_API_BASE = "https://api.telegram.org";
+const MAX_RESULTS = 5;
+
+export class RateLimitedError extends Error {
+  constructor(message = "price source is rate-limiting us") {
+    super(message);
+    this.name = "RateLimitedError";
+  }
+}
+
+export interface PriceItem {
+  persianTitle?: string;
+  title?: string;
+  consumerUnitPrice?: number;
+  webSource?: boolean;
+  webSourceName?: string;
+  crawledAt?: string;
+}
+
+export interface TelegramMessage {
+  text: string;
+  parse_mode?: string;
+  reply_markup?: {
+    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+  };
+}
+
+export function extractCommand(text?: string | null): string | null {
+  if (!text?.startsWith("/")) {
+    return null;
+  }
+  const [commandToken] = text.trim().split(/\s+/);
+  return commandToken.split("@")[0].toLowerCase();
+}
+
+export function buildStartReply(): TelegramMessage {
   return {
     text: [
       "به بات قیمت دارو خوش آمدید.",
       "",
-      "• نام دارو را همین‌جا بفرستید (متنی)",
-      "• یا اپ کامل را با دکمه زیر باز کنید"
-    ].join("\n"),
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: "باز کردن اپ قیمت دارو",
-            web_app: { url: webAppUrl }
-          }
-        ]
-      ]
-    }
+      "نام دارو را همین‌جا بفرستید — قیمت، منبع و تاریخش را می‌گیرید."
+    ].join("\n")
   };
 }
 
-export function buildHelpReply(webAppUrl) {
+export function buildHelpReply(): TelegramMessage {
   return {
     text: [
       "راهنما:",
-      "• نام دارو را به فارسی یا انگلیسی بفرستید — پاسخ متنی + دکمه انتخاب",
-      "• برای تجربه کامل (جستجوی زنده و بروزرسانی تعداد) اپ را باز کنید",
-      "• /start — پیام خوش‌آمد",
-      "",
-      `لینک اپ: ${webAppUrl}`
-    ].join("\n"),
-    reply_markup: buildStartReply(webAppUrl).reply_markup
+      "• نام دارو را به فارسی یا انگلیسی بفرستید",
+      "• زیر هر قیمت دکمه‌ی «📋 کپی» هست — قیمت را با یک تپ کپی کنید",
+      "• /start — شروع دوباره",
+      "• /help — همین راهنما"
+    ].join("\n")
   };
 }
 
-export function extractCommand(text) {
-  if (!text?.startsWith("/")) {
+function itemTitle(item: PriceItem): string {
+  return (item.persianTitle ?? item.title ?? "").trim() || "نامشخص";
+}
+
+function itemSourceLabel(item: PriceItem): string {
+  if (item.webSource) {
+    return (item.webSourceName ?? "").trim() || "وب";
+  }
+  return "کاتالوگ";
+}
+
+/**
+ * One search → one message: up to MAX_RESULTS doctor-friendly blocks,
+ * each with its own «📋 کپی» inline button (callback_data "copy:<index>").
+ */
+export function buildPriceReply(items: PriceItem[], query: string): TelegramMessage {
+  const shown = items.slice(0, MAX_RESULTS);
+  const lines: string[] = [`🔍 ${query}`, ""];
+  const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+
+  shown.forEach((item, index) => {
+    if (index > 0) {
+      lines.push("", "— — —", "");
+    }
+    lines.push(
+      formatPriceBlock({
+        productName: itemTitle(item),
+        priceRial: item.consumerUnitPrice ?? 0,
+        sourceLabel: itemSourceLabel(item),
+        crawledAt: item.crawledAt
+      })
+    );
+    keyboard.push([
+      { text: `📋 کپی ${toPersianDigits(index + 1)}`, callback_data: `copy:${index}` }
+    ]);
+  });
+
+  if (items.length > MAX_RESULTS) {
+    lines.push("", `و ${toPersianDigits(items.length - MAX_RESULTS)} نتیجه‌ی دیگر — جستجو را دقیق‌تر کنید.`);
+  }
+
+  return { text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } };
+}
+
+/**
+ * The copy payload: product name as plain text, the price alone in a
+ * Markdown code span — Telegram renders code spans natively, so one tap
+ * on the code copies exactly the price.
+ */
+export function buildCopyMessage(item: PriceItem): TelegramMessage {
+  const price = formatPriceFa(item.consumerUnitPrice ?? 0);
+  return {
+    text: `${itemTitle(item)}\n\`${price}\``,
+    parse_mode: "Markdown"
+  };
+}
+
+export function parseCopyCallback(data?: string | null): number | null {
+  if (!data?.startsWith("copy:")) {
     return null;
   }
-
-  const [commandToken] = text.trim().split(/\s+/);
-  const command = commandToken.split("@")[0].toLowerCase();
-  return command;
+  const index = Number(data.slice("copy:".length));
+  return Number.isInteger(index) && index >= 0 ? index : null;
 }
 
-export function apiResponseToTelegramMessage(result) {
-  const text =
-    result.text ??
-    result.message ??
-    (result.type === "not_found" ? `دارویی با این نام پیدا نشد: ${result.query ?? ""}` : "پاسخی در دسترس نیست.");
-
-  const replyMarkup = result.telegram?.replyMarkup ?? result.telegram?.reply_markup ?? null;
-  const message = { text };
-
-  if (replyMarkup) {
-    message.reply_markup = replyMarkup;
-  }
-
-  return message;
-}
-
-export function mergeWebAppOpener(message, webAppUrl) {
-  const openerRow = [
-    {
-      text: "باز کردن اپ قیمت دارو",
-      web_app: { url: webAppUrl }
-    }
-  ];
-
-  const keyboard = message.reply_markup?.inline_keyboard ?? [];
-
-  if (keyboard.some((row) => row.some((button) => button.web_app?.url === webAppUrl))) {
-    return message;
-  }
-
-  return {
-    ...message,
-    reply_markup: {
-      inline_keyboard: [...keyboard, openerRow]
-    }
-  };
-}
-
-export async function callTelegramApi(token, method, body) {
+export async function callTelegramApi(token: string, method: string, body: unknown): Promise<any> {
   const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body ?? {})
   });
 
-  const payload = await response.json();
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Telegram API ${method}: non-JSON response (${response.status})`);
+  }
 
-  if (!response.ok || payload.ok === false) {
-    throw new Error(payload.description ?? `Telegram API ${method} failed (${response.status})`);
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.description ?? `Telegram API ${method} failed (${response.status})`);
   }
 
   return payload.result;
 }
 
-export async function configureDefaultMenuButton(token, webAppUrl) {
-  return callTelegramApi(token, "setChatMenuButton", {
-    menu_button: {
-      type: "web_app",
-      text: "قیمت دارو",
-      web_app: { url: webAppUrl }
-    }
-  });
+export async function sendMessage(token: string, chatId: string | number, message: TelegramMessage) {
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    text: message.text
+  };
+  if (message.parse_mode) {
+    body.parse_mode = message.parse_mode;
+  }
+  if (message.reply_markup) {
+    body.reply_markup = message.reply_markup;
+  }
+  return callTelegramApi(token, "sendMessage", body);
 }
 
-export async function registerTelegramWebhook(token, webhookUrl, webhookSecret) {
-  const body = {
+export async function answerCallbackQuery(token: string, callbackQueryId: string, text?: string) {
+  const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
+  if (text) {
+    body.text = text;
+  }
+  return callTelegramApi(token, "answerCallbackQuery", body);
+}
+
+export async function registerTelegramWebhook(token: string, webhookUrl: string, webhookSecret?: string) {
+  const body: Record<string, unknown> = {
     url: webhookUrl,
     allowed_updates: ["message", "callback_query"]
   };
-
   if (webhookSecret) {
     body.secret_token = webhookSecret;
   }
-
   return callTelegramApi(token, "setWebhook", body);
 }
 
-export async function deleteTelegramWebhook(token) {
-  return callTelegramApi(token, "deleteWebhook", {
-    drop_pending_updates: false
-  });
+export async function deleteTelegramWebhook(token: string) {
+  return callTelegramApi(token, "deleteWebhook", { drop_pending_updates: false });
 }
 
-export async function sendMessage(token, chatId, message) {
-  return callTelegramApi(token, "sendMessage", {
-    chat_id: chatId,
-    text: message.text,
-    reply_markup: message.reply_markup
-  });
-}
+/** Thin call to the aggregator API: GET /goods/search?q= */
+export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promise<PriceItem[]> {
+  const base = apiBaseUrl.replace(/\/$/, "");
+  const response = await fetch(`${base}/goods/search?${new URLSearchParams({ q: query })}`);
 
-export async function answerCallbackQuery(token, callbackQueryId) {
-  return callTelegramApi(token, "answerCallbackQuery", {
-    callback_query_id: callbackQueryId
-  });
-}
+  if (response.status === 429) {
+    throw new RateLimitedError();
+  }
 
-function buildBotRequestParams(query) {
-  return new URLSearchParams({
-    q: query,
-    documentDate: DEFAULT_DOCUMENT_DATE,
-    quantity: "1",
-    warehouseId: "main",
-    includeTechnicalFee: "on"
-  });
-}
-
-export async function fetchBotLookup(apiBaseUrl, query) {
-  const baseUrl = apiBaseUrl.replace(/\/$/, "");
-  const response = await fetch(`${baseUrl}/bot/lookup?${buildBotRequestParams(query).toString()}`);
-  const payload = await response.json();
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Price API: non-JSON response (${response.status})`);
+  }
 
   if (!response.ok) {
-    throw new Error(payload.error ?? "Bot lookup failed");
+    throw new Error(payload?.error ?? `Price API search failed (${response.status})`);
   }
 
-  return payload;
+  return Array.isArray(payload?.items) ? payload.items : [];
 }
 
-export async function fetchBotSelect(apiBaseUrl, callbackData) {
-  const baseUrl = apiBaseUrl.replace(/\/$/, "");
-  const params = new URLSearchParams({
-    callbackData,
-    documentDate: DEFAULT_DOCUMENT_DATE,
-    quantity: "1",
-    warehouseId: "main",
-    includeTechnicalFee: "on"
-  });
-  const response = await fetch(`${baseUrl}/bot/select?${params.toString()}`);
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Bot select failed");
-  }
-
-  return payload;
-}
-
-export function resolveBotReply(text, webAppUrl) {
-  const command = extractCommand(text);
-
-  if (command === "/start") {
-    return buildStartReply(webAppUrl);
-  }
-
-  if (command === "/help") {
-    return buildHelpReply(webAppUrl);
-  }
-
-  return mergeWebAppOpener(
-    {
-      text: "برای استفاده از خدمت قیمت دارو، نام دارو را بفرستید یا دکمه اپ را بزنید."
-    },
-    webAppUrl
-  );
-}
-
-export function readTelegramBotConfig(env = process.env) {
+export function readTelegramBotConfig(env: NodeJS.ProcessEnv = process.env) {
   const token = env.TELEGRAM_BOT_TOKEN?.trim();
-  const webAppUrl = env.WEB_APP_URL?.trim();
   const apiBaseUrl = env.API_BASE_URL?.trim() || `http://127.0.0.1:${env.PORT ?? 4000}`;
   const webhookUrl = env.TELEGRAM_WEBHOOK_URL?.trim() || "";
   const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET?.trim() || "";
@@ -213,25 +227,9 @@ export function readTelegramBotConfig(env = process.env) {
   if (!token) {
     throw new Error("TELEGRAM_BOT_TOKEN is required");
   }
-
-  if (!webAppUrl) {
-    throw new Error("WEB_APP_URL is required (public HTTPS URL of the web app)");
-  }
-
-  if (!/^https:\/\//i.test(webAppUrl)) {
-    throw new Error("WEB_APP_URL must use HTTPS for Telegram Mini Apps");
-  }
-
   if (webhookUrl && !/^https:\/\//i.test(webhookUrl)) {
     throw new Error("TELEGRAM_WEBHOOK_URL must use HTTPS");
   }
 
-  return {
-    token,
-    webAppUrl,
-    apiBaseUrl,
-    webhookUrl,
-    webhookSecret,
-    useWebhook: Boolean(webhookUrl)
-  };
+  return { token, apiBaseUrl, webhookUrl, webhookSecret, useWebhook: Boolean(webhookUrl) };
 }
