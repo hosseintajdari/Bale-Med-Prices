@@ -1,124 +1,134 @@
+/**
+ * Telegram update routing — twin of apps/bale-bot/src/process-update.ts.
+ *
+ * - callback_query "copy:<index>" → price in a Markdown code span (one-tap copy)
+ * - /start, /help → fixed replies; any other command → unknown-command reply
+ * - any other text → free price search via the aggregator API
+ *
+ * Last search results are kept per chat in memory so the copy buttons can
+ * resolve. Single-instance assumption; a restart clears pending copy targets.
+ */
 import {
   answerCallbackQuery,
-  apiResponseToTelegramMessage,
+  buildCopyMessage,
   buildHelpReply,
+  buildPriceReply,
   buildStartReply,
   extractCommand,
-  fetchBotLookup,
-  fetchBotSelect,
-  mergeWebAppOpener,
-  sendMessage
+  fetchPriceSearch,
+  parseCopyCallback,
+  RateLimitedError,
+  sendMessage,
+  type PriceItem
 } from "./telegram-bot-lib.ts";
 
-export async function processTelegramUpdate(config, update) {
-  if (update.callback_query) {
-    await processCallbackQuery(config, update.callback_query);
+interface BotConfig {
+  token: string;
+  apiBaseUrl: string;
+}
+
+const lastResults = new Map<string, PriceItem[]>();
+const MAX_SESSIONS = 500;
+
+export function rememberResults(chatId: string, items: PriceItem[]): void {
+  if (lastResults.size >= MAX_SESSIONS) {
+    const oldest = lastResults.keys().next().value;
+    if (oldest !== undefined) {
+      lastResults.delete(oldest);
+    }
+  }
+  lastResults.set(chatId, items);
+}
+
+export function recallResults(chatId: string): PriceItem[] | undefined {
+  return lastResults.get(chatId);
+}
+
+export function clearSessionsForTest(): void {
+  lastResults.clear();
+}
+
+async function processCopyCallback(config: BotConfig, chatId: string, callbackQueryId: string, data: string) {
+  const index = parseCopyCallback(data);
+  const items = recallResults(chatId);
+  const item = index !== null ? items?.[index] : undefined;
+
+  if (!item) {
+    await answerCallbackQuery(config.token, callbackQueryId, "نتیجه‌ای پیدا نشد؛ دوباره جستجو کنید.");
     return;
   }
 
-  const message = update.message;
-
-  if (!message?.chat?.id || typeof message.text !== "string") {
-    return;
-  }
-
-  emitShadowTrace(message);
-
-  await processTextMessage(config, message.chat.id, message.text);
+  await answerCallbackQuery(config.token, callbackQueryId);
+  await sendMessage(config.token, chatId, buildCopyMessage(item));
 }
 
-function emitShadowTrace(message) {
-  const payload = {
-    engine_id: "bale-med-prices",
-    shadow_item: {
-      id: `bmp-${Date.now()}`,
-      sessionId: String(message.chat?.id || "unknown"),
-      channel: "telegram",
-      senderDisplay: String(message.chat?.id || "unknown"),
-      userMessage: message.text || "",
-      proposedReply: "استعلام قیمت دارو...",
-      timestamp: new Date().toISOString(),
-      confidenceScore: 0.99,
-      riskLevel: "safe",
-      status: "pending",
-      deterministicRuleApplied: null
-    },
-    pipeline_traces: [
-      {
-        stage: "GATEWAY_INGEST",
-        title: "Received via Bot Webhook",
-        status: "passed",
-        detail: "Parsed successfully",
-        durationMs: 5
-      }
-    ]
-  };
-
-  fetch("http://localhost:3001/api/pipeline/ingest/shadow-trace", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  }).catch(() => {});
-}
-
-async function processCallbackQuery(config, callbackQuery) {
-  const chatId = callbackQuery.message?.chat?.id;
-  const callbackData = callbackQuery.data;
-
-  if (!chatId || !callbackData) {
-    return;
-  }
-
-  await answerCallbackQuery(config.token, callbackQuery.id);
-
-  const apiResult = await fetchBotSelect(config.apiBaseUrl, callbackData);
-  const telegramMessage = mergeWebAppOpener(
-    apiResponseToTelegramMessage(apiResult),
-    config.webAppUrl
-  );
-
-  await sendMessage(config.token, chatId, telegramMessage);
-}
-
-async function processTextMessage(config, chatId, text) {
+async function processTextMessage(config: BotConfig, chatId: string, text: string) {
   const command = extractCommand(text);
 
   if (command === "/start") {
-    await sendMessage(config.token, chatId, buildStartReply(config.webAppUrl));
+    await sendMessage(config.token, chatId, buildStartReply());
     return;
   }
 
   if (command === "/help") {
-    await sendMessage(config.token, chatId, buildHelpReply(config.webAppUrl));
+    await sendMessage(config.token, chatId, buildHelpReply());
     return;
   }
 
   if (command) {
-    await sendMessage(
-      config.token,
-      chatId,
-      mergeWebAppOpener(
-        {
-          text: "این دستور شناخته نشد. نام دارو را بفرستید یا از دکمه اپ استفاده کنید."
-        },
-        config.webAppUrl
-      )
-    );
+    await sendMessage(config.token, chatId, {
+      text: "این دستور شناخته نشد. نام دارو را بفرستید."
+    });
     return;
   }
 
-  const trimmedText = text.trim();
-
-  if (!trimmedText) {
-    await sendMessage(config.token, chatId, buildStartReply(config.webAppUrl));
+  const query = text.trim();
+  if (!query) {
     return;
   }
 
-  const apiResult = await fetchBotLookup(config.apiBaseUrl, trimmedText);
-  const telegramMessage = mergeWebAppOpener(
-    apiResponseToTelegramMessage(apiResult),
-    config.webAppUrl
-  );
+  let items: PriceItem[];
+  try {
+    items = await fetchPriceSearch(config.apiBaseUrl, query);
+  } catch (error) {
+    if (error instanceof RateLimitedError) {
+      await sendMessage(config.token, chatId, {
+        text: "منبع قیمت محدودمان کرد؛ چند دقیقه دیگر تلاش کنید."
+      });
+      return;
+    }
+    await sendMessage(config.token, chatId, {
+      text: "خطا در استعلام قیمت. دوباره تلاش کنید."
+    });
+    return;
+  }
 
-  await sendMessage(config.token, chatId, telegramMessage);
+  if (items.length === 0) {
+    await sendMessage(config.token, chatId, {
+      text: `چیزی برای «${query}» پیدا نشد.`
+    });
+    return;
+  }
+
+  rememberResults(String(chatId), items);
+  await sendMessage(config.token, chatId, buildPriceReply(items, query));
+}
+
+export async function processTelegramUpdate(config: BotConfig, update: any) {
+  if (update?.callback_query) {
+    const cq = update.callback_query;
+    const chatId = cq.message?.chat?.id;
+    if (chatId === undefined || chatId === null || !cq.id || !cq.data) {
+      return;
+    }
+    await processCopyCallback(config, String(chatId), cq.id, cq.data);
+    return;
+  }
+
+  const message = update?.message;
+  if (message?.chat?.id === undefined || message?.chat?.id === null || typeof message.text !== "string") {
+    return;
+  }
+
+  await processTextMessage(config, String(message.chat.id), message.text);
 }
