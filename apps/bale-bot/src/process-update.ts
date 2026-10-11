@@ -27,6 +27,7 @@ import {
 } from "./bale-bot-lib.ts";
 import {
   buildFallbackText,
+  buildIdentityGuardNote,
   buildSelectionMessage,
   canonicalTitleForResolved,
   fetchLookup,
@@ -85,7 +86,8 @@ async function processCopyCallback(config: BotConfig, chatId: string, callbackQu
 async function runAggregatorPriceFlow(
   config: BotConfig,
   chatId: string,
-  displayQuery: string
+  displayQuery: string,
+  note?: string
 ): Promise<boolean> {
   let items: PriceItem[];
   try {
@@ -108,7 +110,7 @@ async function runAggregatorPriceFlow(
   }
 
   rememberResults(String(chatId), items);
-  await sendMessage(config.token, chatId, buildPriceReply(items, displayQuery));
+  await sendMessage(config.token, chatId, buildPriceReply(items, displayQuery, note));
   return true;
 }
 
@@ -121,8 +123,10 @@ async function handleLookupResponse(
   if (lookup.type === "resolved") {
     // Identity resolved without any LLM — re-query the aggregator by the
     // canonical title so the price still comes from live web sources.
+    // The web list is fuzzy: guard the exact identity with a check note.
     const canonical = canonicalTitleForResolved(lookup);
-    const served = await runAggregatorPriceFlow(config, chatId, canonical || query);
+    const title = canonical || query;
+    const served = await runAggregatorPriceFlow(config, chatId, title, buildIdentityGuardNote(title));
     if (!served && lookup.text) {
       // Aggregator has no web price — fall back to the catalog price text.
       await sendMessage(config.token, chatId, { text: lookup.text });
