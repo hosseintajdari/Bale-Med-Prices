@@ -160,6 +160,16 @@ export function buildSelectionMessage(response: LookupResponse): SelectionBotMes
   };
 }
 
+/**
+ * Identity-guard note appended to web price blocks that follow an exact
+ * identity resolution: the web list is fuzzy, so the user must verify
+ * form/strength per item before copying a price.
+ */
+export function buildIdentityGuardNote(canonicalTitle: string): string {
+  const title = (canonicalTitle ?? "").trim() || "داروی انتخاب‌شده";
+  return `قیمت‌های وب مرتبط با «${title}» — فرم و دوز هر مورد را بررسی کنید.`;
+}
+
 /** Terminal Persian messages for the non-selection lookup outcomes. */
 export function buildFallbackText(response: LookupResponse, query: string): string {
   const q = (response.query ?? query ?? "").trim();
