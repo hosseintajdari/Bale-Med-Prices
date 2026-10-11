@@ -84,7 +84,7 @@ function itemSourceLabel(item: PriceItem): string {
  * One search → one message: up to MAX_RESULTS doctor-friendly blocks,
  * each with its own «📋 کپی» inline button (callback_data "copy:<index>").
  */
-export function buildPriceReply(items: PriceItem[], query: string): BaleMessage {
+export function buildPriceReply(items: PriceItem[], query: string, note?: string): BaleMessage {
   const shown = items.slice(0, MAX_RESULTS);
   const lines: string[] = [`🔍 ${query}`, ""];
   const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
@@ -108,6 +108,10 @@ export function buildPriceReply(items: PriceItem[], query: string): BaleMessage 
 
   if (items.length > MAX_RESULTS) {
     lines.push("", `و ${toPersianDigits(items.length - MAX_RESULTS)} نتیجه‌ی دیگر — جستجو را دقیق‌تر کنید.`);
+  }
+
+  if (note) {
+    lines.push("", note);
   }
 
   return { text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } };
