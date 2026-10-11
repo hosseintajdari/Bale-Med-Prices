@@ -33,6 +33,7 @@ import {
   fetchSelect,
   isSelectionCallback,
   isSelectionStep,
+  LookupRateLimitedError,
   type LookupResponse
 } from "../../../packages/domain/src/selection-client.ts";
 
@@ -92,7 +93,7 @@ async function runAggregatorPriceFlow(
   } catch (error) {
     if (error instanceof RateLimitedError) {
       await sendMessage(config.token, chatId, {
-        text: "منبع قیمت محدودمان کرد؛ چند دقیقه دیگر تلاش کنید."
+        text: "منبع قیمت ما را محدود کرد؛ چند دقیقه دیگر تلاش کنید."
       });
       return true;
     }
@@ -147,9 +148,12 @@ async function processLookupFallback(config: BotConfig, chatId: string, query: s
   let lookup: LookupResponse;
   try {
     lookup = await fetchLookup(config.apiBaseUrl, query);
-  } catch {
+  } catch (error) {
     await sendMessage(config.token, chatId, {
-      text: "خطا در استعلام. دوباره تلاش کنید."
+      text:
+        error instanceof LookupRateLimitedError
+          ? "درخواست‌ها محدود شدند؛ چند دقیقه دیگر تلاش کنید."
+          : "خطا در استعلام. دوباره تلاش کنید."
     });
     return;
   }
@@ -165,8 +169,14 @@ async function processSelectionCallback(
   let lookup: LookupResponse;
   try {
     lookup = await fetchSelect(config.apiBaseUrl, data);
-  } catch {
-    await answerCallbackQuery(config.token, callbackQueryId, "خطا در استعلام. دوباره تلاش کنید.");
+  } catch (error) {
+    await answerCallbackQuery(
+      config.token,
+      callbackQueryId,
+      error instanceof LookupRateLimitedError
+        ? "درخواست‌ها محدود شدند؛ چند دقیقه دیگر تلاش کنید."
+        : "خطا در استعلام. دوباره تلاش کنید."
+    );
     return;
   }
   await answerCallbackQuery(config.token, callbackQueryId);
