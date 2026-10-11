@@ -78,6 +78,13 @@ export function isSelectionCallback(data?: string | null): boolean {
   return typeof data === "string" && data.startsWith("ms:");
 }
 
+export class LookupRateLimitedError extends Error {
+  constructor(message = "lookup source is rate-limiting us") {
+    super(message);
+    this.name = "LookupRateLimitedError";
+  }
+}
+
 export function isSelectionStep(type: string | undefined): boolean {
   return (
     type === "needs_form_selection" ||
@@ -92,6 +99,9 @@ async function readLookupResponse(response: Response, endpoint: string): Promise
     payload = await response.json();
   } catch {
     throw new Error(`Lookup API ${endpoint}: non-JSON response (${response.status})`);
+  }
+  if (response.status === 429) {
+    throw new LookupRateLimitedError();
   }
   if (!response.ok) {
     throw new Error(payload?.error ?? `Lookup API ${endpoint} failed (${response.status})`);
@@ -159,7 +169,7 @@ export function buildFallbackText(response: LookupResponse, query: string): stri
         "\n"
       );
     case "refine_search":
-      return "نتیجه زیاد است؛ نام کامل‌تر یا دوز دارو را بفرستید تا دقیق پیدا شود.";
+      return "نتایج زیاد است؛ نام کامل‌تر یا دوز دارو را بفرستید تا دقیق پیدا شود.";
     case "expired_selection":
     case "invalid_selection":
       return (response.text ?? "").trim() || "این انتخاب قدیمی شده؛ نام دارو را دوباره بفرستید.";
