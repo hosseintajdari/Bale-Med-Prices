@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildFallbackText,
+  buildIdentityGuardNote,
   buildSelectionMessage,
   canonicalTitleForResolved,
   fetchLookup,
@@ -128,6 +129,13 @@ test("buildFallbackText renders Persian terminal messages", () => {
     "این انتخاب قدیمی شده؛ نام دارو را دوباره بفرستید."
   );
   assert.equal(buildFallbackText({ type: "weird" }, "q"), "خطا در استعلام. دوباره تلاش کنید.");
+});
+
+test("buildIdentityGuardNote names the resolved identity", () => {
+  const note = buildIdentityGuardNote("استامینوفن ۵۰۰");
+  assert.ok(note.includes("«استامینوفن ۵۰۰»"));
+  assert.ok(note.includes("فرم و دوز"));
+  assert.ok(buildIdentityGuardNote("  ").includes("داروی انتخاب‌شده"));
 });
 
 function stubFetch(handler: (url: string) => unknown) {
