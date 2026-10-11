@@ -4,8 +4,11 @@ import {
   buildFallbackText,
   buildSelectionMessage,
   canonicalTitleForResolved,
+  fetchLookup,
+  fetchSelect,
   isSelectionCallback,
   isSelectionStep,
+  LookupRateLimitedError,
   type LookupResponse
 } from "./selection-client.ts";
 
@@ -125,4 +128,64 @@ test("buildFallbackText renders Persian terminal messages", () => {
     "این انتخاب قدیمی شده؛ نام دارو را دوباره بفرستید."
   );
   assert.equal(buildFallbackText({ type: "weird" }, "q"), "خطا در استعلام. دوباره تلاش کنید.");
+});
+
+function stubFetch(handler: (url: string) => unknown) {
+  const original = (globalThis as Record<string, unknown>).fetch;
+  (globalThis as Record<string, unknown>).fetch = handler;
+  return () => {
+    (globalThis as Record<string, unknown>).fetch = original;
+  };
+}
+
+test("fetchLookup hits /bot/lookup with the URL-encoded query", async () => {
+  const seen: string[] = [];
+  const restore = stubFetch(async (url: string) => {
+    seen.push(url);
+    return { ok: true, status: 200, json: async () => ({ type: "not_found", query: "x" }) };
+  });
+  try {
+    const response = await fetchLookup("https://api.test/", "استامینوفن");
+    assert.equal(response.type, "not_found");
+    assert.equal(seen.length, 1);
+    assert.ok(seen[0].startsWith("https://api.test/bot/lookup?"));
+    assert.ok(seen[0].includes(`q=${encodeURIComponent("استامینوفن")}`));
+  } finally {
+    restore();
+  }
+});
+
+test("fetchSelect sends callbackData through and keeps colons intact", async () => {
+  const seen: string[] = [];
+  const restore = stubFetch(async (url: string) => {
+    seen.push(url);
+    return { ok: true, status: 200, json: async () => ({ type: "resolved", query: "x" }) };
+  });
+  try {
+    await fetchSelect("https://api.test", "ms:sel-3:form:tablet:oral");
+    const sent = new URL(seen[0]).searchParams.get("callbackData");
+    assert.equal(sent, "ms:sel-3:form:tablet:oral");
+  } finally {
+    restore();
+  }
+});
+
+test("fetchLookup maps 429 to LookupRateLimitedError, other failures to Error", async () => {
+  const restore429 = stubFetch(async () => ({ ok: false, status: 429, json: async () => ({}) }));
+  try {
+    await assert.rejects(fetchLookup("https://api.test", "x"), LookupRateLimitedError);
+  } finally {
+    restore429();
+  }
+
+  const restore500 = stubFetch(async () => ({
+    ok: false,
+    status: 500,
+    json: async () => ({ error: "boom" })
+  }));
+  try {
+    await assert.rejects(fetchLookup("https://api.test", "x"), /boom/);
+  } finally {
+    restore500();
+  }
 });
