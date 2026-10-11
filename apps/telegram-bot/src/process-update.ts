@@ -2,8 +2,12 @@
  * Telegram update routing — twin of apps/bale-bot/src/process-update.ts.
  *
  * - callback_query "copy:<index>" → price in a Markdown code span (one-tap copy)
+ * - callback_query "ms:<sessionId>:<choiceId>" → selection ladder step
+ *   (GET /bot/select → next menu or resolved price)
  * - /start, /help → fixed replies; any other command → unknown-command reply
- * - any other text → free price search via the aggregator API
+ * - any other text → free price search via the aggregator API; zero results
+ *   climb the no-LLM disambiguation ladder (GET /bot/lookup → selection
+ *   menu → canonical retry)
  *
  * Last search results are kept per chat in memory so the copy buttons can
  * resolve. Single-instance assumption; a restart clears pending copy targets.
@@ -21,6 +25,16 @@ import {
   sendMessage,
   type PriceItem
 } from "./telegram-bot-lib.ts";
+import {
+  buildFallbackText,
+  buildSelectionMessage,
+  canonicalTitleForResolved,
+  fetchLookup,
+  fetchSelect,
+  isSelectionCallback,
+  isSelectionStep,
+  type LookupResponse
+} from "../../../packages/domain/src/selection-client.ts";
 
 interface BotConfig {
   token: string;
@@ -62,6 +76,103 @@ async function processCopyCallback(config: BotConfig, chatId: string, callbackQu
   await sendMessage(config.token, chatId, buildCopyMessage(item));
 }
 
+/**
+ * Aggregator price flow. Returns true when the user got a reply
+ * (prices, rate-limit notice, or error); false when the aggregator
+ * simply has nothing for the query.
+ */
+async function runAggregatorPriceFlow(
+  config: BotConfig,
+  chatId: string,
+  displayQuery: string
+): Promise<boolean> {
+  let items: PriceItem[];
+  try {
+    items = await fetchPriceSearch(config.apiBaseUrl, displayQuery);
+  } catch (error) {
+    if (error instanceof RateLimitedError) {
+      await sendMessage(config.token, chatId, {
+        text: "منبع قیمت محدودمان کرد؛ چند دقیقه دیگر تلاش کنید."
+      });
+      return true;
+    }
+    await sendMessage(config.token, chatId, {
+      text: "خطا در استعلام قیمت. دوباره تلاش کنید."
+    });
+    return true;
+  }
+
+  if (items.length === 0) {
+    return false;
+  }
+
+  rememberResults(String(chatId), items);
+  await sendMessage(config.token, chatId, buildPriceReply(items, displayQuery));
+  return true;
+}
+
+async function handleLookupResponse(
+  config: BotConfig,
+  chatId: string,
+  query: string,
+  lookup: LookupResponse
+): Promise<void> {
+  if (lookup.type === "resolved") {
+    // Identity resolved without any LLM — re-query the aggregator by the
+    // canonical title so the price still comes from live web sources.
+    const canonical = canonicalTitleForResolved(lookup);
+    const served = await runAggregatorPriceFlow(config, chatId, canonical || query);
+    if (!served && lookup.text) {
+      // Aggregator has no web price — fall back to the catalog price text.
+      await sendMessage(config.token, chatId, { text: lookup.text });
+    } else if (!served) {
+      await sendMessage(config.token, chatId, {
+        text: `چیزی برای «${query}» پیدا نشد.`
+      });
+    }
+    return;
+  }
+
+  if (isSelectionStep(lookup.type)) {
+    await sendMessage(config.token, chatId, buildSelectionMessage(lookup));
+    return;
+  }
+
+  await sendMessage(config.token, chatId, {
+    text: buildFallbackText(lookup, query)
+  });
+}
+
+async function processLookupFallback(config: BotConfig, chatId: string, query: string): Promise<void> {
+  let lookup: LookupResponse;
+  try {
+    lookup = await fetchLookup(config.apiBaseUrl, query);
+  } catch {
+    await sendMessage(config.token, chatId, {
+      text: "خطا در استعلام. دوباره تلاش کنید."
+    });
+    return;
+  }
+  await handleLookupResponse(config, chatId, query, lookup);
+}
+
+async function processSelectionCallback(
+  config: BotConfig,
+  chatId: string,
+  callbackQueryId: string,
+  data: string
+): Promise<void> {
+  let lookup: LookupResponse;
+  try {
+    lookup = await fetchSelect(config.apiBaseUrl, data);
+  } catch {
+    await answerCallbackQuery(config.token, callbackQueryId, "خطا در استعلام. دوباره تلاش کنید.");
+    return;
+  }
+  await answerCallbackQuery(config.token, callbackQueryId);
+  await handleLookupResponse(config, chatId, lookup.query ?? "", lookup);
+}
+
 async function processTextMessage(config: BotConfig, chatId: string, text: string) {
   const command = extractCommand(text);
 
@@ -87,31 +198,12 @@ async function processTextMessage(config: BotConfig, chatId: string, text: strin
     return;
   }
 
-  let items: PriceItem[];
-  try {
-    items = await fetchPriceSearch(config.apiBaseUrl, query);
-  } catch (error) {
-    if (error instanceof RateLimitedError) {
-      await sendMessage(config.token, chatId, {
-        text: "منبع قیمت محدودمان کرد؛ چند دقیقه دیگر تلاش کنید."
-      });
-      return;
-    }
-    await sendMessage(config.token, chatId, {
-      text: "خطا در استعلام قیمت. دوباره تلاش کنید."
-    });
-    return;
+  const served = await runAggregatorPriceFlow(config, chatId, query);
+  if (!served) {
+    // Aggregator found nothing — climb the no-LLM disambiguation ladder
+    // (catalog fuzzy match → selection menu → canonical retry).
+    await processLookupFallback(config, chatId, query);
   }
-
-  if (items.length === 0) {
-    await sendMessage(config.token, chatId, {
-      text: `چیزی برای «${query}» پیدا نشد.`
-    });
-    return;
-  }
-
-  rememberResults(String(chatId), items);
-  await sendMessage(config.token, chatId, buildPriceReply(items, query));
 }
 
 export async function processTelegramUpdate(config: BotConfig, update: any) {
@@ -121,7 +213,11 @@ export async function processTelegramUpdate(config: BotConfig, update: any) {
     if (chatId === undefined || chatId === null || !cq.id || !cq.data) {
       return;
     }
-    await processCopyCallback(config, String(chatId), cq.id, cq.data);
+    if (isSelectionCallback(cq.data)) {
+      await processSelectionCallback(config, String(chatId), cq.id, cq.data);
+    } else {
+      await processCopyCallback(config, String(chatId), cq.id, cq.data);
+    }
     return;
   }
 
