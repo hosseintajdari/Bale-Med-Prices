@@ -1,0 +1,289 @@
+--- src/catalog-resolver.js.orig	2026-10-14 12:23:14.585589113 +0200
++++ src/catalog-resolver.js	2026-10-14 15:47:05.169721053 +0200
+@@ -37,7 +37,9 @@
+     .replace(/ي/g, "ی")
+     .replace(/ك/g, "ک")
+     .replace(/ة/g, "ه")
+-    .replace(/ۀ/g, "ه");
++    .replace(/ۀ/g, "ه")
++    .replace(/[آأإٱ]/g, "ا")
++    .replace(/[يى]/g, "ی");
+   // Remove Arabic diacritics (harakat)
+   s = s.replace(/[\u064B-\u065F\u0670]/g, "");
+   // Replace ZWNJ (\u200c) with space
+@@ -58,6 +60,33 @@
+   return str;
+ }
+ 
++// Disallowed standalone generic aliases (dosage forms, inventory status, units)
++export const GENERIC_DISALLOWED_ALIASES = new Set([
++  "ویال", "شربت", "کرم", "قرص", "کپسول", "امپول", "قطره", "پماد", "ژل",
++  "سوسپانسیون", "محلول", "اسپری", "سرم", "شیاف", "لوسیون", "پودر", "ساشه", "ساسه",
++  "vial", "syrup", "cream", "tablet", "capsule", "ampoule", "drops", "ointment",
++  "gel", "suspension", "solution", "spray", "serum", "suppository", "lotion", "powder", "sachet",
++  "ناموجود", "موجود", "out of stock"
++]);
++
++export const GENERIC_MEASURE_OR_STOP_TOKENS = new Set([
++  ...GENERIC_DISALLOWED_ALIASES,
++  "میلی", "گرم", "لیتر", "واحد", "درصد", "mg", "ml", "g", "iu", "mcg", "در", "برای", "با",
++  "item", "دارو", "out", "of", "stock", "است"
++]);
++
++export const ISOLATED_UNITS = new Set([
++  "mg", "ml", "g", "iu", "mcg", "واحد", "درصد"
++]);
++
++export const ISOLATED_STATUS_TERMS = new Set([
++  "ناموجود", "موجود", "out of stock", "دارو ناموجود", "item out of stock"
++]);
++
++export const DOSAGE_MEASURE_TOKENS = new Set([
++  "میلی", "گرم", "لیتر", "واحد", "درصد", "mg", "ml", "g", "iu", "mcg"
++]);
++
+ export const BUILTIN_REFERENCE_ITEMS = [
+   {
+     goodId: "g-1001",
+@@ -81,7 +110,7 @@
+     dosageForm: "ویال",
+     strength: "10 mg / 5 ml",
+     sellPrice: 95000,
+-    aliases: ["ویال", "sample vial", "نمونه آموزشی ویال"],
++    aliases: ["sample vial", "نمونه آموزشی ویال"],
+   },
+   {
+     goodId: "g-1002-diphen",
+@@ -93,7 +122,7 @@
+     dosageForm: "شربت",
+     strength: "۱۲.۵ میلی‌گرم / ۵ میلی‌لیتر",
+     sellPrice: 120000,
+-    aliases: ["شربت دیفن هیدرامین", "دیفن هیدرامین", "diphenhydramine", "شربت"],
++    aliases: ["شربت دیفن هیدرامین", "دیفن هیدرامین", "diphenhydramine"],
+   },
+   {
+     goodId: "g-1003",
+@@ -141,7 +170,7 @@
+     dosageForm: "ویال",
+     strength: "1 g",
+     sellPrice: 300000,
+-    aliases: ["ناموجود", "out of stock"],
++    aliases: ["داروی ناموجود", "out of stock item"],
+   },
+   {
+     goodId: "g-1002",
+@@ -153,7 +182,7 @@
+     dosageForm: "کرم",
+     strength: "50 ml",
+     sellPrice: 240000,
+-    aliases: ["کرم محافظ", "cream", "protective cream"],
++    aliases: ["کرم محافظ", "protective cream"],
+   },
+ ];
+ 
+@@ -243,7 +272,12 @@
+  * Computes candidate relevance score in [0.0, 1.0].
+  */
+ export function scoreCandidate(query, candidate) {
+-  const cleanCodeQuery = normalizeDigits(query.trim());
++  if (!query || typeof query !== "string") return 0;
++  if (!/[\p{L}\p{N}]/u.test(query)) return 0;
++
++  const cleanDigits = normalizeDigits(query.trim());
++  const cleanCodeQuery = cleanDigits.replace(/[^\w\d]/g, "");
++  const rawCodeQuery = cleanDigits;
+   const normQuery = normalizeText(query);
+   if (!normQuery && !cleanCodeQuery) return 0;
+ 
+@@ -254,14 +288,17 @@
+ 
+   // 1. Exact Code Matching (Tier 1: 0.85 - 1.00)
+   if (cleanCodeQuery) {
+-    if (genericCode && cleanCodeQuery === genericCode) return 1.0;
+-    if (barcode && cleanCodeQuery === barcode) return 1.0;
+-    if (goodId && cleanCodeQuery.toLowerCase() === goodId) return 1.0;
+-    if (brandCode && cleanCodeQuery === brandCode) return 0.85;
++    if (genericCode && (cleanCodeQuery === genericCode || rawCodeQuery === genericCode)) {
++      if (brandCode && (cleanCodeQuery === brandCode || rawCodeQuery === brandCode)) return 1.0;
++      return 0.999;
++    }
++    if (barcode && (cleanCodeQuery === barcode || rawCodeQuery === barcode)) return 1.0;
++    if (goodId && (cleanCodeQuery.toLowerCase() === goodId || rawCodeQuery.toLowerCase() === goodId)) return 1.0;
++    if (brandCode && (cleanCodeQuery === brandCode || rawCodeQuery === brandCode)) return 0.85;
+   }
+ 
+-  // Code Prefix Match (0.80)
+-  if (cleanCodeQuery && cleanCodeQuery.length >= 3) {
++  // Code Prefix Match (0.80) - only for numeric codes >= 3 digits
++  if (/^\d{3,}$/.test(cleanCodeQuery)) {
+     if (genericCode.startsWith(cleanCodeQuery) || brandCode.startsWith(cleanCodeQuery)) {
+       return 0.80;
+     }
+@@ -269,7 +306,8 @@
+ 
+   const normTitle = normalizeText(candidate.title || "");
+   const normPersianTitle = normalizeText(candidate.persianTitle || "");
+-  const normAliases = (candidate.aliases || []).map((a) => normalizeText(a));
++  const rawNormAliases = (candidate.aliases || []).map((a) => normalizeText(a)).filter((a) => a.length > 0);
++  const normAliases = rawNormAliases.filter((a) => !GENERIC_DISALLOWED_ALIASES.has(a));
+   const normDosage = normalizeText(candidate.dosageForm || "");
+   const normStrength = normalizeText(candidate.strength || "");
+ 
+@@ -277,11 +315,48 @@
+   if (normQuery === normTitle || normQuery === normPersianTitle) return 0.99;
+   if (normAliases.includes(normQuery)) return 0.97;
+ 
++  // Placeholder inventory status item (g-1006) must only match exact code or exact canonical title/alias
++  if (candidate.goodId === "g-1006" || genericCode === "00999") {
++    return 0;
++  }
++
++  // Standalone disallowed dosage forms (e.g. "ویال", "شربت", "کرم", "قرص", "کپسول", "vial", "cream")
++  if (GENERIC_DISALLOWED_ALIASES.has(normQuery)) {
++    return 0;
++  }
++
++  // Isolated units (e.g. "mg", "ml", "واحد")
++  if (ISOLATED_UNITS.has(normQuery)) {
++    return 0;
++  }
++
++  // Isolated status terms
++  if (ISOLATED_STATUS_TERMS.has(normQuery)) {
++    return 0;
++  }
++
++  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
++
++  // Pure dosage queries containing only numbers and dosage units (e.g. "۵۰۰ میلی گرم", "500 mg")
++  const hasDigitToken = queryTokens.some((t) => /^\d+$/.test(t));
++  const hasDosageToken = queryTokens.some((t) => DOSAGE_MEASURE_TOKENS.has(t));
++  const allTokensAreDosageOrDigit = queryTokens.length > 0 && queryTokens.every(
++    (t) => /^\d+$/.test(t) || DOSAGE_MEASURE_TOKENS.has(t)
++  );
++  if (hasDigitToken && hasDosageToken && allTokensAreDosageOrDigit) {
++    return 0;
++  }
++
+   // 3. Title Starts With Query (Tier 3: 0.90)
+-  if (normTitle.startsWith(normQuery) || normPersianTitle.startsWith(normQuery)) return 0.90;
++  if (
++    normQuery.length >= 3 &&
++    !GENERIC_MEASURE_OR_STOP_TOKENS.has(normQuery) &&
++    (normTitle.startsWith(normQuery) || normPersianTitle.startsWith(normQuery))
++  ) {
++    return 0.90;
++  }
+ 
+   // 4. Multi-Token Overlap & Attribute Boosting (Tier 4)
+-  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
+   if (queryTokens.length > 0) {
+     const candidateTokens = new Set([
+       ...normTitle.split(" "),
+@@ -292,22 +367,31 @@
+     ].filter((t) => t.length > 0));
+ 
+     let matchedTokens = 0;
++    let matchedSubstantiveTokens = 0;
+     for (const qt of queryTokens) {
++      const isGeneric = GENERIC_MEASURE_OR_STOP_TOKENS.has(qt) || /^\d+$/.test(qt);
+       if (candidateTokens.has(qt)) {
+         matchedTokens++;
++        if (!isGeneric) matchedSubstantiveTokens++;
+       } else {
+-        // Partial token containment
+-        for (const ct of candidateTokens) {
+-          if (ct.includes(qt) || qt.includes(ct)) {
+-            matchedTokens += 0.5;
+-            break;
++        // Partial token containment - only for non-generic tokens >= 3 chars
++        if (!isGeneric && qt.length >= 3) {
++          for (const ct of candidateTokens) {
++            if (!GENERIC_MEASURE_OR_STOP_TOKENS.has(ct) && !/^\d+$/.test(ct)) {
++              if (ct.includes(qt) || qt.includes(ct)) {
++                matchedTokens += 0.5;
++                matchedSubstantiveTokens += 0.5;
++                break;
++              }
++            }
+           }
+         }
+       }
+     }
+ 
+     const overlapRatio = matchedTokens / queryTokens.length;
+-    if (overlapRatio > 0) {
++    // Only grant Tier 4 score if at least one substantive (non-generic, non-numeric) token matched.
++    if (overlapRatio > 0 && matchedSubstantiveTokens > 0) {
+       let boost = 0;
+       // Dosage form boost
+       if (normDosage && normQuery.includes(normDosage)) boost += 0.08;
+@@ -323,15 +407,37 @@
+   }
+ 
+   // 5. Substring Containment (Tier 5)
+-  if (normTitle.includes(normQuery) || normPersianTitle.includes(normQuery)) {
++  if (
++    normQuery.length >= 3 &&
++    !GENERIC_MEASURE_OR_STOP_TOKENS.has(normQuery) &&
++    (normTitle.includes(normQuery) || normPersianTitle.includes(normQuery))
++  ) {
+     const lenRatio = Math.min(1, normQuery.length / Math.max(normTitle.length, 1));
+     const subScore = 0.50 + 0.30 * lenRatio;
+     return Math.round(subScore * 100) / 100;
+   }
+ 
++  // 6. Refined Alias Evaluation:
++  // - Require minimum query length >= 3
++  // - For alias prefix match (typing as-you-type): alias.startsWith(normQuery)
++  // - For phrase containment: require whole-token word boundary match
++  //   AND length ratio >= 0.35, and never on single generic terms.
+   for (const alias of normAliases) {
+-    if (alias.includes(normQuery) || normQuery.includes(alias)) {
+-      return 0.65;
++    if (normQuery.length >= 3 && alias.startsWith(normQuery)) {
++      const lenRatio = normQuery.length / alias.length;
++      const subScore = 0.55 + 0.25 * lenRatio;
++      return Math.round(subScore * 100) / 100;
++    }
++
++    if (alias.length >= 4 && !GENERIC_DISALLOWED_ALIASES.has(alias)) {
++      const regex = new RegExp(`(^|\\s)${alias.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}(\\s|$)`);
++      if (regex.test(normQuery)) {
++        const lenRatio = Math.min(1, alias.length / normQuery.length);
++        if (lenRatio >= 0.35) {
++          const subScore = 0.45 + 0.35 * lenRatio;
++          return Math.round(subScore * 100) / 100;
++        }
++      }
+     }
+   }
+ 
+@@ -350,7 +456,26 @@
+     dosageForm = null,
+   } = options;
+ 
+-  if (!query || typeof query !== "string" || !query.trim()) {
++  if (!query || typeof query !== "string" || !/[\p{L}\p{N}]/u.test(query)) {
++    return [];
++  }
++
++  const normQuery = normalizeText(query);
++  if (
++    GENERIC_DISALLOWED_ALIASES.has(normQuery) ||
++    ISOLATED_UNITS.has(normQuery) ||
++    ISOLATED_STATUS_TERMS.has(normQuery)
++  ) {
++    return [];
++  }
++
++  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
++  const hasDigitToken = queryTokens.some((t) => /^\d+$/.test(t));
++  const hasDosageToken = queryTokens.some((t) => DOSAGE_MEASURE_TOKENS.has(t));
++  const allTokensAreDosageOrDigit = queryTokens.length > 0 && queryTokens.every(
++    (t) => /^\d+$/.test(t) || DOSAGE_MEASURE_TOKENS.has(t)
++  );
++  if (hasDigitToken && hasDosageToken && allTokensAreDosageOrDigit) {
+     return [];
+   }
+ 

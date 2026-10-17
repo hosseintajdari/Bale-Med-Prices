@@ -1,0 +1,240 @@
+diff --git a/src/catalog-resolver.js b/src/catalog-resolver.js
+--- a/src/catalog-resolver.js
++++ b/src/catalog-resolver.js
+@@ -37,7 +37,9 @@ export function normalizeText(text) {
+     .replace(/ي/g, "ی")
+     .replace(/ك/g, "ک")
+     .replace(/ة/g, "ه")
+-    .replace(/ۀ/g, "ه");
++    .replace(/ۀ/g, "ه")
++    .replace(/[آأإٱ]/g, "ا")
++    .replace(/[يى]/g, "ی");
+   // Remove Arabic diacritics (harakat)
+   s = s.replace(/[\u064B-\u065F\u0670]/g, "");
+   // Replace ZWNJ (\u200c) with space
+@@ -60,6 +62,20 @@ export function normalizeCodeString(code) {
+   return str;
+ }
+ 
++// Disallowed standalone generic aliases (dosage forms, inventory status, units)
++export const GENERIC_DISALLOWED_ALIASES = new Set([
++  "ویال", "شربت", "کرم", "قرص", "کپسول", "امپول", "قطره", "پماد", "ژل",
++  "سوسپانسیون", "محلول", "اسپری", "سرم", "شیاف", "لوسیون", "پودر", "ساسه",
++  "vial", "syrup", "cream", "tablet", "capsule", "ampoule", "drops", "ointment",
++  "gel", "suspension", "solution", "spray", "serum", "suppository", "lotion", "powder",
++  "ناموجود", "موجود", "out of stock"
++]);
++
++export const GENERIC_MEASURE_OR_STOP_TOKENS = new Set([
++  ...GENERIC_DISALLOWED_ALIASES,
++  "میلی", "گرم", "لیتر", "واحد", "درصد", "mg", "ml", "g", "iu", "mcg", "در", "برای", "با"
++]);
++
+ export const BUILTIN_REFERENCE_ITEMS = [
+   {
+     goodId: "g-1001",
+@@ -81,7 +97,7 @@ export const BUILTIN_REFERENCE_ITEMS = [
+     dosageForm: "ویال",
+     strength: "10 mg / 5 ml",
+     sellPrice: 95000,
+-    aliases: ["ویال", "sample vial", "نمونه آموزشی ویال"],
++    aliases: ["sample vial", "نمونه آموزشی ویال"],
+   },
+   {
+     goodId: "g-1002-diphen",
+@@ -93,7 +109,7 @@ export const BUILTIN_REFERENCE_ITEMS = [
+     dosageForm: "شربت",
+     strength: "۱۲.۵ میلی‌گرم / ۵ میلی‌لیتر",
+     sellPrice: 120000,
+-    aliases: ["شربت دیفن هیدرامین", "دیفن هیدرامین", "diphenhydramine", "شربت"],
++    aliases: ["شربت دیفن هیدرامین", "دیفن هیدرامین", "diphenhydramine"],
+   },
+   {
+     goodId: "g-1003",
+@@ -141,7 +157,7 @@ export const BUILTIN_REFERENCE_ITEMS = [
+     dosageForm: "ویال",
+     strength: "1 g",
+     sellPrice: 300000,
+-    aliases: ["ناموجود", "out of stock"],
++    aliases: ["داروی ناموجود", "out of stock item"],
+   },
+   {
+     goodId: "g-1002",
+@@ -153,7 +169,7 @@ export const BUILTIN_REFERENCE_ITEMS = [
+     dosageForm: "کرم",
+     strength: "50 ml",
+     sellPrice: 240000,
+-    aliases: ["کرم محافظ", "cream", "protective cream"],
++    aliases: ["کرم محافظ", "protective cream"],
+   },
+ ];
+ 
+@@ -269,7 +285,8 @@ export function scoreCandidate(query, candidate) {
+ 
+   const normTitle = normalizeText(candidate.title || "");
+   const normPersianTitle = normalizeText(candidate.persianTitle || "");
+-  const normAliases = (candidate.aliases || []).map((a) => normalizeText(a));
++  const rawNormAliases = (candidate.aliases || []).map((a) => normalizeText(a)).filter((a) => a.length > 0);
++  const normAliases = rawNormAliases.filter((a) => !GENERIC_DISALLOWED_ALIASES.has(a));
+   const normDosage = normalizeText(candidate.dosageForm || "");
+   const normStrength = normalizeText(candidate.strength || "");
+ 
+@@ -293,9 +310,12 @@ export function scoreCandidate(query, candidate) {
+     ].filter((t) => t.length > 0));
+ 
+     let matchedTokens = 0;
++    let matchedSubstantiveTokens = 0;
+     for (const qt of queryTokens) {
++      const isGeneric = GENERIC_MEASURE_OR_STOP_TOKENS.has(qt) || /^\d+$/.test(qt);
+       if (candidateTokens.has(qt)) {
+         matchedTokens++;
++        if (!isGeneric) matchedSubstantiveTokens++;
+       } else {
+         // Partial token containment
+         for (const ct of candidateTokens) {
+@@ -301,6 +321,9 @@ export function scoreCandidate(query, candidate) {
+         for (const ct of candidateTokens) {
+           if (ct.includes(qt) || qt.includes(ct)) {
+             matchedTokens += 0.5;
++            if (!isGeneric && !GENERIC_MEASURE_OR_STOP_TOKENS.has(ct) && !/^\d+$/.test(ct)) {
++              matchedSubstantiveTokens += 0.5;
++            }
+             break;
+           }
+         }
+       }
+     }
+ 
+     const overlapRatio = matchedTokens / queryTokens.length;
+-    if (overlapRatio > 0) {
++    // Only grant Tier 4 score if at least one substantive (non-generic, non-numeric) token matched.
++    if (overlapRatio > 0 && matchedSubstantiveTokens > 0) {
+       let boost = 0;
+       // Dosage form boost
+       if (normDosage && normQuery.includes(normDosage)) boost += 0.08;
+@@ -329,10 +350,26 @@ export function scoreCandidate(query, candidate) {
+     return Math.round(subScore * 100) / 100;
+   }
+ 
++  // 6. Refined Alias Evaluation:
++  // - Require minimum query length >= 3
++  // - For alias prefix match (typing as-you-type): alias.startsWith(normQuery)
++  // - For phrase containment: require whole-token word boundary match
++  //   AND length ratio >= 0.35, and never on single generic terms.
+   for (const alias of normAliases) {
+-    if (alias.includes(normQuery) || normQuery.includes(alias)) {
+-      return 0.65;
++    if (normQuery.length >= 3 && alias.startsWith(normQuery)) {
++      const lenRatio = normQuery.length / alias.length;
++      const subScore = 0.55 + 0.25 * lenRatio;
++      return Math.round(subScore * 100) / 100;
+     }
++
++    if (alias.length >= 4 && !GENERIC_DISALLOWED_ALIASES.has(alias)) {
++      const regex = new RegExp(`(^|\\s)${alias.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}(\\s|$)`);
++      if (regex.test(normQuery)) {
++        const lenRatio = Math.min(1, alias.length / normQuery.length);
++        if (lenRatio >= 0.35) {
++          const subScore = 0.45 + 0.35 * lenRatio;
++          return Math.round(subScore * 100) / 100;
++        }
++      }
++    }
+   }
+ 
+   return 0;
+diff --git a/fixtures/qanoon-mock-data.json b/fixtures/qanoon-mock-data.json
+--- a/fixtures/qanoon-mock-data.json
++++ b/fixtures/qanoon-mock-data.json
+@@ -76,7 +76,7 @@
+       "activeStatus": "active",
+       "ttacCode": null,
+       "ttacPrice": 240000,
+-      "aliases": ["کرم", "cream", "protective cream"]
++      "aliases": ["کرم محافظ", "protective cream"]
+     },
+     {
+       "id": "g-1003",
+@@ -126,7 +126,7 @@
+       "activeStatus": "active",
+       "ttacCode": "TTAC-COUGH-120",
+       "ttacPrice": 135000,
+-      "aliases": ["شربت", "cough syrup", "سرفه"]
++      "aliases": ["شربت سرفه", "cough syrup", "سرفه"]
+     },
+     {
+       "id": "g-1005",
+@@ -151,7 +151,7 @@
+       "activeStatus": "active",
+       "ttacCode": "TTAC-VITD-1000",
+       "ttacPrice": 85000,
+-      "aliases": ["ویتامین", "vitamin d"]
++      "aliases": ["ویتامین دی۳", "vitamin d"]
+     },
+     {
+       "id": "g-1006",
+@@ -176,7 +176,7 @@
+       "activeStatus": "active",
+       "ttacCode": null,
+       "ttacPrice": null,
+-      "aliases": ["ناموجود", "out of stock"]
++      "aliases": ["داروی ناموجود", "out of stock item"]
+     },
+     {
+       "id": "g-1007",
+@@ -201,7 +201,7 @@
+       "activeStatus": "active",
+       "ttacCode": "TTAC-VIAL-14083",
+       "ttacPrice": 95000,
+-      "aliases": ["ویال", "sample vial"]
++      "aliases": ["sample vial", "نمونه آموزشی ویال"]
+     }
+   ],
+   "stock": [
+diff --git a/test/catalog-resolver.test.js b/test/catalog-resolver.test.js
+--- a/test/catalog-resolver.test.js
++++ b/test/catalog-resolver.test.js
+@@ -152,3 +152,43 @@ test("CR_10: High-confidence resolution in resolveItem for exact code", () => {
+   assert.strictEqual(resolution.suggestedReference.genericCode, "00001");
+   assert.strictEqual(typeof resolution.suggestedReference.genericCode, "string");
+ });
++
++test("CR_11: Alef normalization variants across Arabic/Persian forms ([آأإٱ] -> ا)", () => {
++  assert.strictEqual(normalizeText("آموکسی"), normalizeText("اموکسی"));
++  assert.strictEqual(normalizeText("استامینوفن"), normalizeText("آستامینوفن"));
++  const r1 = searchCatalog("اموکسی");
++  assert.ok(r1.length > 0, "اموکسی must resolve to Amoxicillin");
++  assert.strictEqual(r1[0].genericCode, "00001");
++  const r2 = searchCatalog("آستامینوفن");
++  assert.ok(r2.length > 0, "آستامینوفن must resolve to Acetaminophen");
++  assert.strictEqual(r2[0].genericCode, "00025");
++});
++
++test("CR_12: Dosage-form specific clinical query does not match Educational Sample Vial (M2-C2-01)", () => {
++  const hits = searchCatalog("ویال سفتریاکسون ۱ گرم");
++  assert.strictEqual(hits.some((h) => h.goodId === "g-1007" || h.genericCode === "14083"), false, "Must not match Educational Sample Vial");
++  const res = resolveItem("ویال سفتریاکسون ۱ گرم");
++  assert.notStrictEqual(res.suggestedReference?.goodId, "g-1007");
++});
++
++test("CR_13: Formulation-only query does not trigger false positive matches on unrelated active ingredients", () => {
++  const ketotifenHits = searchCatalog("شربت کتوتیفن");
++  assert.strictEqual(ketotifenHits.some((h) => h.goodId === "g-1002-diphen" || h.goodId === "g-1004"), false);
++  const hydroHits = searchCatalog("کرم هیدروکورتیزون");
++  assert.strictEqual(hydroHits.some((h) => h.goodId === "g-1002"), false);
++});
++
++test("CR_14: Status placeholder words do not match Out of Stock Item (M2-C2-02)", () => {
++  const hits = searchCatalog("سفتریاکسون ناموجود");
++  assert.strictEqual(hits.some((h) => h.goodId === "g-1006"), false);
++  const outOfStockHits = searchCatalog("داروی ناموجود");
++  assert.ok(outOfStockHits.length > 0);
++  assert.strictEqual(outOfStockHits[0].goodId, "g-1006");
++});
++
++test("CR_15: Legitimate drug and sample aliases remain fully functional", () => {
++  const sampleVialHits = searchCatalog("sample vial");
++  assert.ok(sampleVialHits.length > 0);
++  assert.strictEqual(sampleVialHits[0].goodId, "g-1007");
++  assert.ok(sampleVialHits[0].score >= 0.95);
++});

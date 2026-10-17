@@ -1,0 +1,18 @@
+[
+  {
+    "genericCode": "00001",
+    "brandCode": "00001",
+    "title": "نمونه آموزشی قرص",
+    "dosageForm": "قرص",
+    "strength": "۵۰۰ میلی‌گرم",
+    "referenceDate": "نمونه آموزشی"
+  },
+  {
+    "genericCode": "14083",
+    "brandCode": "14083",
+    "title": "نمونه آموزشی ویال",
+    "dosageForm": "ویال",
+    "strength": "۱۰ میلی‌گرم / ۵ میلی‌لیتر",
+    "referenceDate": "نمونه آموزشی"
+  }
+]

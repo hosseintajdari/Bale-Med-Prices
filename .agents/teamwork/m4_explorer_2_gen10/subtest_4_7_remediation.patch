@@ -1,0 +1,70 @@
+--- a/test/frontend-order-desk.test.js
++++ b/test/frontend-order-desk.test.js
+@@ -296,6 +296,16 @@
+     }
+   }
+ 
++  function sendNotification(method, params = {}) {
++    const handlers = windowListeners.get("message") || [];
++    for (const h of handlers) {
++      h({
++        source: mockWindow.parent,
++        data: { jsonrpc: "2.0", method, params },
++      });
++    }
++  }
++
+   return {
+     context,
+     scriptCode,
+@@ -305,6 +315,7 @@
+     consoleErrors,
+     getElement,
+     replyTo,
++    sendNotification,
+     runScript: () => vm.runInContext(scriptCode, context),
+   };
+ }
+@@ -796,25 +807,24 @@
+     harness.replyTo(harness.postedMessages[0].id, {});
+     await new Promise((r) => setTimeout(r, 10));
+ 
+-    // Simulate host context changed notification from ChatGPT Apps SDK
+-    harness.replyTo(undefined, undefined, undefined); // baseline ping
+-    const messageEvent = {
+-      source: harness.mockWindow.parent,
+-      data: {
+-        jsonrpc: "2.0",
+-        method: "ui/notifications/host-context-changed",
+-        params: { theme: "dark" },
+-      },
+-    };
++    // Dispatch host context theme change notification
++    harness.sendNotification("ui/notifications/host-context-changed", { theme: "dark" });
++    await new Promise((r) => setTimeout(r, 10));
+ 
+-    // Trigger message event on mock window
+-    const handlers = harness.mockWindow.parent;
+-    // Dispatch to window message listeners
+-    harness.replyTo(999999); // dummy
+-    // Send directly through replyTo mechanism by setting data
+-    const messageHandlers = harness.context.window.addEventListener;
+-    // Inspect documentElement
+     const htmlEl = harness.mockDocument.documentElement;
+-    assert.ok(htmlEl, "documentElement exists");
++    assert.strictEqual(htmlEl.getAttribute("data-theme"), "dark", "Must set data-theme='dark'");
++    assert.strictEqual(htmlEl.style.colorScheme, "dark", "Must set colorScheme='dark'");
++
++    // Dispatch switch back to light
++    harness.sendNotification("ui/notifications/host-context-changed", { theme: "light" });
++    await new Promise((r) => setTimeout(r, 10));
++    assert.strictEqual(htmlEl.getAttribute("data-theme"), "light", "Must set data-theme='light'");
++    assert.strictEqual(htmlEl.style.colorScheme, "light", "Must set colorScheme='light'");
++
++    // Dispatch switch to auto
++    harness.sendNotification("ui/notifications/host-context-changed", { theme: "auto" });
++    await new Promise((r) => setTimeout(r, 10));
++    assert.strictEqual(htmlEl.getAttribute("data-theme"), null, "Must remove data-theme on auto");
++    assert.strictEqual(htmlEl.style.colorScheme, "light dark", "Must set colorScheme='light dark' on auto");
+   });
+ });

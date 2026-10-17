@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>میز سفارش PanelPH</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: #ffffff; --surface: #ffffff; --surface-hover: #f7f7f8;
+        --border: #e5e5e5; --divider: #eeeeee; --text: #1f1f1f; --muted: #6b6b6b;
+        --input: #ffffff; --accent: #3b82f6; --accent-text: #ffffff;
+        --warning-bg: #fff6df; --warning-text: #8a5100;
+        --success-bg: #e9f8ef; --success-text: #176b3a; --info-bg: #edf4ff; --info-text: #2456a6;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #121212; --surface: #171717; --surface-hover: #212121;
+          --border: #303030; --divider: #2a2a2a; --text: #ececec; --muted: #a0a0a0;
+          --input: #212121; --accent: #4d8dff; --accent-text: #ffffff;
+          --warning-bg: #342b17; --warning-text: #f4c974;
+          --success-bg: #153522; --success-text: #a7e8bd; --info-bg: #172d4d; --info-text: #accbff;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--page); color: var(--text); padding: 20px; }
+      main { max-width: 1040px; margin: 0 auto; }
+      header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 4px 0 20px; }
+      section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+      h1 { font-size: 1rem; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+      h2 { font-size: .875rem; font-weight: 600; margin: 0 0 12px; }
+      .summary, .status { color: var(--muted); font-size: .8125rem; margin-top: 5px; }
+      .grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(240px, .95fr); gap: 12px; }
+      form { display: grid; grid-template-columns: minmax(0, 1.6fr) .58fr .75fr auto; gap: 8px; }
+      input, button { font: inherit; font-size: .875rem; border-radius: 8px; min-height: 38px; padding: 8px 10px; }
+      input { background: var(--input); color: var(--text); border: 1px solid var(--border); outline: none; min-width: 0; }
+      input::placeholder { color: var(--muted); }
+      input:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+      button { background: var(--accent); color: var(--accent-text); border: 0; cursor: pointer; font-weight: 550; padding-inline: 15px; }
+      button:hover { filter: brightness(1.06); }
+      button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      button:disabled { opacity: .6; cursor: wait; }
+      .items, .ambiguities, .history { display: grid; gap: 6px; }
+      .item { background: var(--surface); border: 1px solid var(--divider); border-radius: 9px; padding: 11px 12px; display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+      .item:hover { background: var(--surface-hover); }
+      .item-title { font-size: .875rem; font-weight: 550; }
+      .detail { color: var(--muted); font-size: .75rem; line-height: 1.45; margin-top: 3px; }
+      .badge { border-radius: 999px; padding: 4px 8px; font-size: .6875rem; font-weight: 550; line-height: 1.2; white-space: nowrap; }
+      .needs_completion { background: var(--warning-bg); color: var(--warning-text); }
+      .ready_for_review { background: var(--success-bg); color: var(--success-text); }
+      .open { background: var(--info-bg); color: var(--info-text); }
+      .empty { color: var(--muted); font-size: .8125rem; padding: 8px 1px; }
+      .event { color: var(--muted); font-size: .75rem; border-bottom: 1px solid var(--divider); padding: 9px 1px; }
+      .event:last-child { border-bottom: 0; }
+      .error { color: #dc2626; min-height: 1.2em; margin: 8px 0 0; font-size: .75rem; }
+      @media (max-width: 700px) { body { padding: 14px; } .grid { grid-template-columns: 1fr; } form { grid-template-columns: 1fr 1fr; } form input:first-child { grid-column: span 2; } form button { grid-column: span 2; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><h1>میز سفارش</h1><div id="summary" class="summary">در حال دریافت پیش‌نویس…</div></div>
+        <span id="status" class="badge open">باز</span>
+      </header>
+      <section>
+        <h2>ثبت سریع نیاز</h2>
+        <form id="need-form" autocomplete="off">
+          <input id="name" required placeholder="نام آزاد کالا" aria-label="نام آزاد کالا" />
+          <input id="quantity" required min="1" step="any" type="number" placeholder="تعداد" aria-label="تعداد" />
+          <input id="unit" placeholder="واحد اختیاری" aria-label="واحد اختیاری" />
+          <button id="submit" type="submit">افزودن</button>
+        </form>
+        <p id="error" class="error" role="alert"></p>
+      </section>
+      <div class="grid">
+        <section><h2>ردیف‌های پیش‌نویس</h2><div id="items" class="items"></div></section>
+        <section><h2>ابهام‌های نیازمند تکمیل</h2><div id="ambiguities" class="ambiguities"></div></section>
+      </div>
+      <section><h2>سابقهٔ تغییر</h2><div id="history" class="history"></div></section>
+    </main>
+    <script type="module">
+      const itemsEl = document.querySelector("#items");
+      const ambiguitiesEl = document.querySelector("#ambiguities");
+      const historyEl = document.querySelector("#history");
+      const summaryEl = document.querySelector("#summary");
+      const statusEl = document.querySelector("#status");
+      const formEl = document.querySelector("#need-form");
+      const errorEl = document.querySelector("#error");
+      const submitEl = document.querySelector("#submit");
+      let draft;
+      let rpcId = 0;
+      const pending = new Map();
+
+      const notify = (method, params) => window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+      const request = (method, params) => new Promise((resolve, reject) => {
+        const id = ++rpcId;
+        pending.set(id, { resolve, reject });
+        window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+      });
+      function update(response) {
+        if (response?.structuredContent?.draft) { draft = response.structuredContent.draft; render(); }
+      }
+      window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) return;
+        const message = event.data;
+        if (!message || message.jsonrpc !== "2.0") return;
+        if (typeof message.id === "number") {
+          const action = pending.get(message.id); if (!action) return;
+          pending.delete(message.id); message.error ? action.reject(message.error) : action.resolve(message.result); return;
+        }
+        if (message.method === "ui/notifications/tool-result") update(message.params);
+      }, { passive: true });
+      async function callTool(name, args = {}) {
+        const response = await request("tools/call", { name, arguments: args }); update(response); return response;
+      }
+      function statusText(status) { return ({ open: "باز", needs_completion: "نیازمند تکمیل", ready_for_review: "آماده بازبینی" })[status] ?? status; }
+      function empty(text) { const div = document.createElement("div"); div.className = "empty"; div.textContent = text; return div; }
+      function itemCard(item) {
+        const card = document.createElement("div"); card.className = "item";
+        const text = document.createElement("div"); const title = document.createElement("div"); title.className = "item-title"; title.textContent = item.freeTextName;
+        const detail = document.createElement("div"); detail.className = "detail";
+        const identity = item.resolvedReference ? ` — ${item.resolvedReference.title}` : "";
+        detail.textContent = `${item.quantity} ${item.unit || ""}${identity}`.trim(); text.append(title, detail);
+        const badge = document.createElement("span"); badge.className = `badge ${item.status}`; badge.textContent = statusText(item.status);
+        card.append(text, badge); return card;
+      }
+      function render() {
+        const items = draft?.items ?? []; const ambiguities = items.filter((item) => item.status === "needs_completion");
+        summaryEl.textContent = `${items.length} ردیف · ${ambiguities.length} ابهام`;
+        statusEl.className = `badge ${draft.status}`; statusEl.textContent = statusText(draft.status);
+        itemsEl.replaceChildren(...(items.length ? items.map(itemCard) : [empty("هنوز نیازی ثبت نشده است.")]));
+        ambiguitiesEl.replaceChildren(...(ambiguities.length ? ambiguities.map(itemCard) : [empty("همهٔ ردیف‌ها آمادهٔ بازبینی‌اند.")]));
+        const events = (draft?.events ?? []).slice(0, 8).map((event) => { const row = document.createElement("div"); row.className = "event"; row.textContent = event.type; return row; });
+        historyEl.replaceChildren(...(events.length ? events : [empty("هنوز تغییری ثبت نشده است.")]));
+      }
+      async function initialize() {
+        await request("ui/initialize", { appInfo: { name: "panelph-order-desk", version: "0.1.0" }, appCapabilities: {}, protocolVersion: "2026-01-26" });
+        notify("ui/notifications/initialized", {});
+        await callTool("get_order_draft");
+      }
+      formEl.addEventListener("submit", async (event) => {
+        event.preventDefault(); errorEl.textContent = ""; submitEl.disabled = true;
+        try { await callTool("add_order_need", { name: document.querySelector("#name").value, quantity: Number(document.querySelector("#quantity").value), unit: document.querySelector("#unit").value }); formEl.reset(); }
+        catch (error) { errorEl.textContent = error?.message || "ثبت نیاز ناموفق بود."; }
+        finally { submitEl.disabled = false; }
+      });
+      initialize().catch((error) => { errorEl.textContent = "اتصال پنل برقرار نشد."; console.error(error); });
+    </script>
+  </body>
+</html>

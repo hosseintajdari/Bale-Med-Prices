@@ -1,0 +1,48 @@
+--- test/catalog-resolver.test.js	2026-10-14 15:20:15.832458007 +0200
++++ /tmp/proposed_catalog-resolver.test.js	2026-10-14 15:49:13.305644717 +0200
+@@ -190,3 +190,45 @@
+   assert.strictEqual(sampleVialHits[0].goodId, "g-1007");
+   assert.ok(sampleVialHits[0].score >= 0.95);
+ });
++
++test("CR_16: Punctuation queries collapse to empty search results and non-resolved state", () => {
++  const punctuationQueries = [",", "-", ";", ".", "!", "   ,   ", "...", "،", "؛", "؟", " \t \n , ; - \r "];
++  for (const q of punctuationQueries) {
++    const hits = searchCatalog(q);
++    assert.strictEqual(hits.length, 0, `Query "${q}" must yield 0 hits, got ${hits.length}`);
++    const res = resolveItem(q);
++    assert.strictEqual(res.resolved, false, `Query "${q}" must not be resolved`);
++    assert.strictEqual(res.confidence, "none", `Query "${q}" confidence must be none`);
++    assert.strictEqual(res.suggestedReference, null, `Query "${q}" must have no suggestedReference`);
++  }
++});
++
++test("CR_17: Isolated units, dosages, forms, and status placeholders return zero score and no suggested references", () => {
++  const genericQueries = [
++    "mg", "ml", "واحد", "ویال", "شربت", "کرم", "قرص", "کپسول", "ناموجود",
++    "۵۰۰ میلی گرم", "500 mg", "120 ml", "1000 iu", "1 g"
++  ];
++  for (const q of genericQueries) {
++    const hits = searchCatalog(q);
++    assert.strictEqual(hits.length, 0, `Generic query "${q}" must yield 0 hits, got ${hits.length}`);
++    const res = resolveItem(q);
++    assert.strictEqual(res.suggestedReference, null, `Generic query "${q}" must not have suggestedReference`);
++  }
++});
++
++test("CR_18: Length and substantive token guards on Tier 3 prefix and Tier 5 substring matching", () => {
++  // Single-token dosage form کرم must not auto-resolve to Adult Protective Cream
++  const creamResolve = resolveItem("کرم");
++  assert.strictEqual(creamResolve.resolved, false, "Standalone کرم must not be auto-resolved");
++  assert.strictEqual(creamResolve.suggestedReference, null, "Standalone کرم must not suggest reference");
++
++  // Unrelated compound formulation کرم هیدروکورتیزون must not substring-match Adult Protective Cream
++  const hydroHits = searchCatalog("کرم هیدروکورتیزون");
++  assert.strictEqual(hydroHits.some((h) => h.goodId === "g-1002"), false, "Hydrocortisone cream must not match Adult Protective Cream");
++
++  // Legitimate full query containing substantive tokens resolves cleanly
++  const legitHits = searchCatalog("کرم محافظ بزرگسال");
++  assert.ok(legitHits.length > 0);
++  assert.strictEqual(legitHits[0].goodId, "g-1002");
++  assert.ok(legitHits[0].score >= 0.95);
++});

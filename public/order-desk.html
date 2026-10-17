@@ -1,0 +1,1399 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>میز سفارش PanelPH</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: #ffffff;
+        --surface: #ffffff;
+        --surface-hover: #f7f7f8;
+        --surface-subtle: #fbfbfb;
+        --border: #e5e5e5;
+        --divider: #eeeeee;
+        --text: #1f1f1f;
+        --muted: #6b6b6b;
+        --input: #ffffff;
+        --accent: #3b82f6;
+        --accent-text: #ffffff;
+        --warning-bg: #fff6df;
+        --warning-text: #8a5100;
+        --warning-border: #f4c974;
+        --success-bg: #e9f8ef;
+        --success-text: #176b3a;
+        --success-border: #a7e8bd;
+        --info-bg: #edf4ff;
+        --info-text: #2456a6;
+        --info-border: #accbff;
+        --danger-bg: #fef2f2;
+        --danger-text: #b91c1c;
+        --danger-border: #fca5a5;
+        --radius-sm: 6px;
+        --radius-md: 9px;
+        --radius-lg: 12px;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --page: #121212;
+          --surface: #171717;
+          --surface-hover: #212121;
+          --surface-subtle: #1c1c1c;
+          --border: #303030;
+          --divider: #2a2a2a;
+          --text: #ececec;
+          --muted: #a0a0a0;
+          --input: #212121;
+          --accent: #4d8dff;
+          --accent-text: #ffffff;
+          --warning-bg: #342b17;
+          --warning-text: #f4c974;
+          --warning-border: #5a4822;
+          --success-bg: #153522;
+          --success-text: #a7e8bd;
+          --success-border: #235436;
+          --info-bg: #172d4d;
+          --info-text: #accbff;
+          --info-border: #254677;
+          --danger-bg: #361a1a;
+          --danger-text: #fca5a5;
+          --danger-border: #5c2222;
+        }
+      }
+
+      [data-theme="dark"] {
+        --page: #121212;
+        --surface: #171717;
+        --surface-hover: #212121;
+        --surface-subtle: #1c1c1c;
+        --border: #303030;
+        --divider: #2a2a2a;
+        --text: #ececec;
+        --muted: #a0a0a0;
+        --input: #212121;
+        --accent: #4d8dff;
+        --accent-text: #ffffff;
+        --warning-bg: #342b17;
+        --warning-text: #f4c974;
+        --warning-border: #5a4822;
+        --success-bg: #153522;
+        --success-text: #a7e8bd;
+        --success-border: #235436;
+        --info-bg: #172d4d;
+        --info-text: #accbff;
+        --info-border: #254677;
+        --danger-bg: #361a1a;
+        --danger-text: #fca5a5;
+        --danger-border: #5c2222;
+      }
+
+      [data-theme="light"] {
+        --page: #ffffff;
+        --surface: #ffffff;
+        --surface-hover: #f7f7f8;
+        --surface-subtle: #fbfbfb;
+        --border: #e5e5e5;
+        --divider: #eeeeee;
+        --text: #1f1f1f;
+        --muted: #6b6b6b;
+        --input: #ffffff;
+        --accent: #3b82f6;
+        --accent-text: #ffffff;
+        --warning-bg: #fff6df;
+        --warning-text: #8a5100;
+        --warning-border: #f4c974;
+        --success-bg: #e9f8ef;
+        --success-text: #176b3a;
+        --success-border: #a7e8bd;
+        --info-bg: #edf4ff;
+        --info-text: #2456a6;
+        --info-border: #accbff;
+        --danger-bg: #fef2f2;
+        --danger-text: #b91c1c;
+        --danger-border: #fca5a5;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--text);
+        padding: 20px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      main { max-width: 1040px; margin: 0 auto; position: relative; }
+
+      /* Header */
+      header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 4px 0 16px;
+      }
+      .header-title-area { display: flex; flex-direction: column; gap: 4px; }
+      h1 { font-size: 1.125rem; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+      .summary { color: var(--muted); font-size: .8125rem; }
+      .header-actions { display: flex; align-items: center; gap: 10px; }
+
+      /* Sections & Panels */
+      section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      h2 {
+        font-size: .875rem;
+        font-weight: 600;
+        margin: 0 0 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .badge-count {
+        background: var(--surface-hover);
+        border: 1px solid var(--divider);
+        color: var(--muted);
+        font-size: .75rem;
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: 999px;
+      }
+
+      /* Capture Form */
+      .form-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(90px, 0.7fr) minmax(110px, 0.9fr) auto;
+        gap: 8px;
+      }
+      .field-name { grid-column: 1; }
+      .field-qty { grid-column: 2; }
+      .field-unit { grid-column: 3; }
+      .field-submit { grid-column: 4; }
+      .field-note { grid-column: 1 / -1; }
+
+      input, button, select {
+        font: inherit;
+        font-size: .875rem;
+        border-radius: var(--radius-sm);
+        min-height: 38px;
+        padding: 8px 11px;
+      }
+      input {
+        background: var(--input);
+        color: var(--text);
+        border: 1px solid var(--border);
+        outline: none;
+        width: 100%;
+        transition: border-color .15s ease, box-shadow .15s ease;
+      }
+      input::placeholder { color: var(--muted); }
+      input:focus-visible {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+      }
+
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 0;
+        cursor: pointer;
+        font-weight: 550;
+        padding-inline: 14px;
+        white-space: nowrap;
+        transition: filter .15s ease, background-color .15s ease, opacity .15s ease;
+      }
+      button:hover:not(:disabled) { filter: brightness(1.06); }
+      button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      button:disabled { opacity: .55; cursor: not-allowed; }
+
+      .btn-primary { background: var(--accent); color: var(--accent-text); }
+      .btn-secondary {
+        background: var(--surface-hover);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn-icon {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--divider);
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        min-height: 34px;
+      }
+      .btn-icon:hover { background: var(--surface-hover); color: var(--text); }
+      .btn-sm {
+        font-size: .75rem;
+        min-height: 28px;
+        padding: 3px 9px;
+        border-radius: 5px;
+      }
+      .btn-revert {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+        font-size: .75rem;
+        min-height: 26px;
+        padding: 2px 8px;
+        border-radius: 5px;
+      }
+      .btn-revert:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+      }
+
+      /* Badges */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: .6875rem;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+        border: 1px solid transparent;
+      }
+      .badge.needs_completion { background: var(--warning-bg); color: var(--warning-text); border-color: var(--warning-border); }
+      .badge.ready_for_review { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+      .badge.open { background: var(--info-bg); color: var(--info-text); border-color: var(--info-border); }
+      .badge.badge-reverted { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
+
+      /* Two Column Layout */
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+        gap: 12px;
+      }
+      .items, .ambiguities, .history, .timeline { display: grid; gap: 8px; }
+
+      /* Item Cards */
+      .item {
+        background: var(--surface);
+        border: 1px solid var(--divider);
+        border-radius: var(--radius-md);
+        padding: 12px 14px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+        transition: background-color .15s ease, border-color .15s ease;
+      }
+      .item.interactive { cursor: pointer; }
+      .item.interactive:hover {
+        background: var(--surface-hover);
+        border-color: color-mix(in srgb, var(--accent) 40%, var(--divider));
+      }
+      .item-main { flex: 1; min-width: 0; }
+      .item-title { font-size: .875rem; font-weight: 600; word-break: break-word; }
+      .detail { color: var(--muted); font-size: .78rem; line-height: 1.45; margin-top: 4px; }
+      .item-resolved {
+        color: var(--success-text);
+        font-size: .75rem;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .item-note {
+        color: var(--muted);
+        font-size: .75rem;
+        font-style: italic;
+        margin-top: 3px;
+        background: var(--surface-subtle);
+        padding: 2px 6px;
+        border-radius: 4px;
+        display: inline-block;
+      }
+      .item-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+
+      /* Ambiguity Cards */
+      .ambiguity-card {
+        background: var(--surface);
+        border: 1px solid var(--warning-border);
+        border-radius: var(--radius-md);
+        padding: 11px 13px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background-color: color-mix(in srgb, var(--warning-bg) 35%, var(--surface));
+      }
+      .ambiguity-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .ambiguity-title { font-size: .875rem; font-weight: 600; }
+      .ambiguity-desc { font-size: .75rem; color: var(--warning-text); line-height: 1.4; }
+
+      /* Suggested Action Banner */
+      .suggested-action {
+        background: var(--surface-subtle);
+        border: 1px dashed var(--border);
+        border-radius: var(--radius-md);
+        padding: 10px 14px;
+        font-size: .8125rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .suggested-action strong { color: var(--text); }
+
+      /* Event History */
+      .event-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 4px;
+        border-bottom: 1px solid var(--divider);
+        font-size: .78rem;
+      }
+      .event-item:last-child { border-bottom: 0; }
+      .event-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .event-time { color: var(--muted); font-size: .72rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .event-text { word-break: break-word; color: var(--text); }
+      .event-reverted-text { text-decoration: line-through; opacity: .6; }
+
+      .empty {
+        color: var(--muted);
+        font-size: .8125rem;
+        padding: 16px 4px;
+        text-align: center;
+      }
+      .error { color: var(--danger-text); min-height: 1.2em; margin: 8px 0 0; font-size: .75rem; }
+
+      /* Ambiguity Drawer / Modal */
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(2px);
+        z-index: 100;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+      }
+      .drawer-backdrop.active { opacity: 1; pointer-events: auto; }
+
+      .drawer-panel {
+        position: fixed;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: min(540px, 100vw);
+        background: var(--surface);
+        border-inline-end: 1px solid var(--border);
+        box-shadow: 6px 0 28px rgba(0, 0, 0, 0.2);
+        z-index: 101;
+        transform: translateX(-100%);
+        transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        flex-direction: column;
+      }
+      .drawer-panel.active { transform: translateX(0); }
+
+      .drawer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--divider);
+      }
+      .drawer-title-group { display: flex; align-items: center; gap: 10px; }
+      .drawer-body {
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        flex: 1;
+      }
+      .drawer-footer {
+        padding: 14px 20px;
+        border-top: 1px solid var(--divider);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        background: var(--surface-subtle);
+      }
+
+      .drawer-section {
+        border: 1px solid var(--divider);
+        border-radius: var(--radius-md);
+        padding: 14px;
+        background: var(--surface);
+      }
+      .drawer-section legend {
+        font-size: .75rem;
+        font-weight: 600;
+        color: var(--muted);
+        padding: 0 6px;
+      }
+      .form-row { margin-bottom: 10px; }
+      .form-row label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: 4px; }
+      .form-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+
+      /* Catalog Search in Drawer */
+      .catalog-search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+      .candidates-list { display: grid; gap: 8px; max-height: 280px; overflow-y: auto; padding: 2px; }
+      .candidate-card {
+        border: 1px solid var(--divider);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: border-color .15s ease, background-color .15s ease;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .candidate-card:hover { background: var(--surface-hover); border-color: var(--border); }
+      .candidate-card.selected {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+      }
+      .candidate-info { flex: 1; min-width: 0; }
+      .candidate-title { font-size: .84rem; font-weight: 600; }
+      .candidate-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        font-size: .72rem;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .meta-tag {
+        background: var(--surface-subtle);
+        border: 1px solid var(--divider);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        inset-inline-start: 24px;
+        background: var(--text);
+        color: var(--page);
+        padding: 10px 16px;
+        border-radius: var(--radius-md);
+        font-size: .8125rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        z-index: 200;
+        transition: opacity .2s ease, transform .2s ease;
+      }
+      .toast.hidden { opacity: 0; transform: translateY(12px); pointer-events: none; }
+
+      @media (max-width: 700px) {
+        body { padding: 14px; }
+        .grid { grid-template-columns: 1fr; }
+        .form-grid { grid-template-columns: 1fr 1fr; }
+        .field-name { grid-column: span 2; }
+        .field-qty { grid-column: 1; }
+        .field-unit { grid-column: 2; }
+        .field-note { grid-column: span 2; }
+        .field-submit { grid-column: span 2; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="header-title-area">
+          <h1>میز سفارش PanelPH</h1>
+          <div id="summary" class="summary">
+            <span id="summary-items">۰ ردیف</span> · <span id="summary-ambiguities">۰ ابهام</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span id="status" class="badge open">باز</span>
+          <button id="btn-theme-toggle" class="btn-icon" title="تغییر حالت شب/روز" aria-label="تغییر حالت شب و روز">🌓</button>
+        </div>
+      </header>
+
+      <!-- Rapid Need Capture Section -->
+      <section>
+        <h2>ثبت سریع نیاز</h2>
+        <form id="need-form" autocomplete="off">
+          <div class="form-grid">
+            <div class="field-name">
+              <input id="name" required placeholder="نام آزاد کالا (مثلاً استامینوفن ۵۰۰)" aria-label="نام آزاد کالا" />
+            </div>
+            <div class="field-qty">
+              <input id="quantity" required min="1" step="any" type="number" placeholder="تعداد" aria-label="تعداد" />
+            </div>
+            <div class="field-unit">
+              <input id="unit" placeholder="واحد (اختیاری)" aria-label="واحد اختیاری" />
+            </div>
+            <div class="field-submit">
+              <button id="submit" class="btn-primary" type="submit">افزودن</button>
+            </div>
+            <div class="field-note">
+              <input id="note" placeholder="یادداشت اختیاری (مثلاً تحویل فوری، برند خواسته شده)" aria-label="یادداشت اختیاری" />
+            </div>
+          </div>
+          <p id="error" class="error" role="alert"></p>
+        </form>
+      </section>
+
+      <!-- Two-Column Grid: Draft Items & Ambiguities -->
+      <div class="grid">
+        <section>
+          <h2>
+            <span>ردیف‌های پیش‌نویس</span>
+            <span id="items-count-badge" class="badge-count">۰</span>
+          </h2>
+          <div id="items" class="items"></div>
+        </section>
+
+        <section>
+          <h2>
+            <span>ابهام‌های نیازمند تکمیل</span>
+            <span id="ambiguities-count-badge" class="badge-count">۰</span>
+          </h2>
+          <div id="ambiguities" class="ambiguities"></div>
+        </section>
+      </div>
+
+      <!-- Suggested Action Guidance Banner -->
+      <section id="guidance-section" style="padding: 10px 14px; margin-bottom: 12px;">
+        <div id="suggested-action" class="suggested-action">
+          <span>در حال بررسی وضعیت پیش‌نویس…</span>
+        </div>
+      </section>
+
+      <!-- Event History Timeline & Compensating Reverts -->
+      <section id="timeline" class="timeline-section">
+        <h2>سابقهٔ تغییر و بازگردانی</h2>
+        <div id="history" class="history"></div>
+      </section>
+    </main>
+
+    <!-- Ambiguity Resolution Drawer -->
+    <div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>
+    <aside id="ambiguity-drawer" class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true">
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <h2 id="drawer-title">تکمیل و رفع ابهام ردیف</h2>
+          <span id="drawer-status-badge" class="badge"></span>
+        </div>
+        <button id="drawer-close" class="btn-icon" aria-label="بستن پنجره">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        <!-- Section A: Quick Properties Edit -->
+        <fieldset class="drawer-section">
+          <legend>مشخصات نیاز آزاد</legend>
+          <div class="form-row">
+            <label for="drawer-name">نام کالا:</label>
+            <input id="drawer-name" required />
+          </div>
+          <div class="form-row-grid">
+            <div>
+              <label for="drawer-quantity">تعداد:</label>
+              <input id="drawer-quantity" type="number" min="1" step="any" required />
+            </div>
+            <div>
+              <label for="drawer-unit">واحد:</label>
+              <input id="drawer-unit" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="drawer-note">یادداشت:</label>
+            <input id="drawer-note" placeholder="یادداشت اختیاری" />
+          </div>
+          <button id="drawer-btn-update" type="button" class="btn-secondary btn-sm">ذخیره اصلاحات</button>
+        </fieldset>
+
+        <!-- Section B: Catalog Search & Candidate Proposals -->
+        <fieldset class="drawer-section">
+          <legend>پیشنهادهای تطبیق کاتالوگ دارو (قانون / IRC)</legend>
+          <div class="catalog-search-bar">
+            <input id="catalog-search" placeholder="جستجو در کاتالوگ (نام، دوز، شکل یا کد ژنریک)..." />
+            <button id="btn-search-catalog" type="button" class="btn-secondary">جستجو</button>
+          </div>
+          <div id="catalog-loading" class="empty hidden">در حال جستجو در کاتالوگ…</div>
+          <div id="catalog-candidates" class="candidates-list"></div>
+        </fieldset>
+      </div>
+
+      <div class="drawer-footer">
+        <button id="btn-confirm-resolve" type="button" class="btn-primary" disabled>تأیید این کالا</button>
+        <button id="btn-cancel-drawer" type="button" class="btn-secondary">فعلاً فقط نیاز آزاد بماند</button>
+      </div>
+    </aside>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <script type="module">
+      // State Management
+      const state = {
+        mode: "detecting", // "mcp" | "rest"
+        draft: null,
+        selectedItemId: null,
+        selectedCandidate: null,
+        theme: "auto",
+      };
+
+      let rpcId = 0;
+      const pending = new Map();
+
+      // DOM Elements Cache
+      const itemsEl = document.querySelector("#items");
+      const ambiguitiesEl = document.querySelector("#ambiguities");
+      const historyEl = document.querySelector("#history") || document.querySelector("#timeline");
+      const summaryEl = document.querySelector("#summary");
+      const summaryItemsEl = document.querySelector("#summary-items");
+      const summaryAmbiguitiesEl = document.querySelector("#summary-ambiguities");
+      const statusEl = document.querySelector("#status");
+      const itemsCountBadge = document.querySelector("#items-count-badge");
+      const ambiguitiesCountBadge = document.querySelector("#ambiguities-count-badge");
+      const suggestedActionEl = document.querySelector("#suggested-action");
+      const formEl = document.querySelector("#need-form");
+      const errorEl = document.querySelector("#error");
+      const submitEl = document.querySelector("#submit");
+      const themeToggleBtn = document.querySelector("#btn-theme-toggle") || document.querySelector("#theme-toggle");
+
+      // Drawer Elements
+      const drawerBackdrop = document.querySelector("#drawer-backdrop");
+      const drawerPanel = document.querySelector("#ambiguity-drawer");
+      const drawerCloseBtn = document.querySelector("#drawer-close");
+      const drawerCancelBtn = document.querySelector("#btn-cancel-drawer");
+      const drawerConfirmBtn = document.querySelector("#btn-confirm-resolve");
+      const drawerUpdateBtn = document.querySelector("#drawer-btn-update");
+      const drawerTitleEl = document.querySelector("#drawer-title");
+      const drawerStatusBadge = document.querySelector("#drawer-status-badge");
+      const drawerNameInput = document.querySelector("#drawer-name");
+      const drawerQuantityInput = document.querySelector("#drawer-quantity");
+      const drawerUnitInput = document.querySelector("#drawer-unit");
+      const drawerNoteInput = document.querySelector("#drawer-note");
+      const catalogSearchInput = document.querySelector("#catalog-search");
+      const btnSearchCatalog = document.querySelector("#btn-search-catalog");
+      const catalogLoadingEl = document.querySelector("#catalog-loading");
+      const catalogCandidatesEl = document.querySelector("#catalog-candidates");
+      const toastEl = document.querySelector("#toast");
+
+      // Theme Management
+      function applyTheme(theme) {
+        if (theme === "dark" || theme === "light") {
+          document.documentElement.setAttribute("data-theme", theme);
+          document.documentElement.style.colorScheme = theme;
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+          document.documentElement.style.colorScheme = "light dark";
+        }
+      }
+
+      if (themeToggleBtn) {
+        themeToggleBtn.addEventListener("click", () => {
+          const current = document.documentElement.getAttribute("data-theme");
+          const next = current === "dark" ? "light" : (current === "light" ? "auto" : "dark");
+          state.theme = next;
+          applyTheme(next);
+          showToast(next === "auto" ? "پوسته هماهنگ با سیستم" : (next === "dark" ? "پوسته شب فعال شد" : "پوسته روز فعال شد"));
+        });
+      }
+
+      // Toast Helper
+      let toastTimer = null;
+      function showToast(message) {
+        if (!toastEl) return;
+        clearTimeout(toastTimer);
+        toastEl.textContent = message;
+        if (toastEl.classList?.remove) {
+          toastEl.classList.remove("hidden");
+        }
+        toastTimer = setTimeout(() => {
+          if (toastEl.classList?.add) toastEl.classList.add("hidden");
+        }, 3000);
+      }
+
+      // MCP postMessage Transport
+      const notify = (method, params) => {
+        if (window.parent && typeof window.parent.postMessage === "function") {
+          window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+        }
+      };
+
+      const request = (method, params) => new Promise((resolve, reject) => {
+        const id = ++rpcId;
+        pending.set(id, { resolve, reject });
+        if (window.parent && typeof window.parent.postMessage === "function") {
+          window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+        } else {
+          reject(new Error("محیط فاقد قابلیت postMessage است."));
+        }
+      });
+
+      window.addEventListener("message", (event) => {
+        if (window.parent && event.source !== window.parent) return;
+        const message = event.data;
+        if (!message || message.jsonrpc !== "2.0") return;
+
+        if (typeof message.id === "number") {
+          const action = pending.get(message.id);
+          if (!action) return;
+          pending.delete(message.id);
+          message.error ? action.reject(message.error) : action.resolve(message.result);
+          return;
+        }
+
+        // Host Context Synchronization
+        if (message.method === "ui/notifications/host-context-changed") {
+          if (message.params?.theme) {
+            applyTheme(message.params.theme);
+          }
+        }
+
+        if (message.method === "ui/notifications/tool-result") {
+          if (message.params?.structuredContent?.draft) {
+            state.draft = message.params.structuredContent.draft;
+            render();
+          }
+        }
+      }, { passive: true });
+
+      // Unified Dual-Transport API Client
+      async function callApi(toolName, args = {}) {
+        if (state.mode === "mcp") {
+          const res = await request("tools/call", { name: toolName, arguments: args });
+          if (res?.structuredContent?.draft) {
+            state.draft = res.structuredContent.draft;
+            render();
+          }
+          return res;
+        }
+
+        // REST Mode Fallback
+        let url = "";
+        let method = "GET";
+        let body = null;
+
+        switch (toolName) {
+          case "get_order_draft":
+            url = "/api/draft";
+            break;
+          case "add_order_need":
+            url = "/api/draft/needs";
+            method = "POST";
+            body = args;
+            break;
+          case "update_order_need":
+            url = `/api/draft/needs/${args.id}`;
+            method = "PATCH";
+            body = args;
+            break;
+          case "resolve_order_need":
+            url = `/api/draft/needs/${args.id}/resolve`;
+            method = "POST";
+            body = { reference: args.reference };
+            break;
+          case "revert_order_event":
+            url = "/api/draft/revert";
+            method = "POST";
+            body = { eventId: args.eventId };
+            break;
+          case "search_catalog":
+            url = `/api/catalog/search?q=${encodeURIComponent(args.query || "")}&limit=${args.limit || 20}`;
+            break;
+          default:
+            throw new Error(`عملیات ناشناخته: ${toolName}`);
+        }
+
+        const fetchOptions = {
+          method,
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        };
+        if (body) fetchOptions.body = JSON.stringify(body);
+
+        const response = await fetch(url, fetchOptions);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `خطای شبکه: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.draft) {
+          state.draft = data.draft;
+          render();
+        }
+        return { structuredContent: data };
+      }
+
+      function statusText(status) {
+        return ({ open: "باز", needs_completion: "نیازمند تکمیل", ready_for_review: "آماده بازبینی" })[status] ?? status;
+      }
+
+      function empty(text) {
+        const div = document.createElement("div");
+        div.className = "empty";
+        div.textContent = text;
+        return div;
+      }
+
+      // Revert Target IDs Tracker
+      function getActiveRevertedTargetIds(events = []) {
+        const activeTargets = new Set();
+        for (const event of events) {
+          if (event.type === "event_reverted" && !activeTargets.has(event.id)) {
+            activeTargets.add(event.targetEventId);
+          }
+        }
+        return activeTargets;
+      }
+
+      // Render Item Card in Draft List
+      function renderItemCard(item) {
+        const card = document.createElement("div");
+        card.className = "item interactive";
+        card.setAttribute("role", "button");
+        card.setAttribute("tabindex", "0");
+        card.setAttribute("aria-label", `مشاهده مشخصات ${item.freeTextName}`);
+
+        const main = document.createElement("div");
+        main.className = "item-main";
+
+        const title = document.createElement("div");
+        title.className = "item-title";
+        title.textContent = item.freeTextName;
+
+        const detail = document.createElement("div");
+        detail.className = "detail";
+        detail.textContent = `${item.quantity} ${item.unit || "عدد"}`.trim();
+
+        main.append(title, detail);
+
+        if (item.resolvedReference) {
+          const res = document.createElement("div");
+          res.className = "item-resolved";
+          res.textContent = `✓ مرجع: ${item.resolvedReference.title} (کد: ${item.resolvedReference.genericCode || "-"})`;
+          main.append(res);
+        }
+
+        if (item.note) {
+          const noteEl = document.createElement("div");
+          noteEl.className = "item-note";
+          noteEl.textContent = `یادداشت: ${item.note}`;
+          main.append(noteEl);
+        }
+
+        const side = document.createElement("div");
+        side.className = "item-side";
+
+        const badge = document.createElement("span");
+        badge.className = `badge ${item.status}`;
+        badge.textContent = statusText(item.status);
+        side.append(badge);
+
+        card.append(main, side);
+
+        const openItemDrawer = () => openDrawer(item.id);
+        card.addEventListener("click", openItemDrawer);
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openItemDrawer();
+          }
+        });
+
+        return card;
+      }
+
+      // Render Ambiguity Card in Ambiguities Column
+      function renderAmbiguityCard(item) {
+        const card = document.createElement("div");
+        card.className = "ambiguity-card";
+
+        const header = document.createElement("div");
+        header.className = "ambiguity-card-header";
+
+        const title = document.createElement("div");
+        title.className = "ambiguity-title";
+        title.textContent = item.freeTextName;
+
+        const badge = document.createElement("span");
+        badge.className = "badge needs_completion";
+        badge.textContent = "نیازمند تکمیل";
+
+        header.append(title, badge);
+
+        const desc = document.createElement("div");
+        desc.className = "ambiguity-desc";
+        desc.textContent = "کالای دقیق و مرجع دارویی مشخص نشده است. برای سفارش دقیق، شکل یا بسته‌بندی را تأیید کنید.";
+
+        const actionBtn = document.createElement("button");
+        actionBtn.type = "button";
+        actionBtn.className = "btn-secondary btn-sm";
+        actionBtn.textContent = "تعیین کالا و رفع ابهام";
+        actionBtn.setAttribute("aria-label", `رفع ابهام ردیف ${item.freeTextName}`);
+        actionBtn.addEventListener("click", () => openDrawer(item.id));
+
+        card.append(header, desc, actionBtn);
+        return card;
+      }
+
+      // Render Event History Row with Compensating Revert
+      function renderEventRow(event, revertedTargetIds) {
+        const row = document.createElement("div");
+        row.className = "event-item";
+
+        const isReverted = revertedTargetIds.has(event.id);
+        const info = document.createElement("div");
+        info.className = "event-info";
+
+        const time = document.createElement("span");
+        time.className = "event-time";
+        try {
+          time.textContent = new Date(event.occurredAt).toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        } catch {
+          time.textContent = event.occurredAt || "";
+        }
+
+        const text = document.createElement("span");
+        text.className = `event-text ${isReverted ? "event-reverted-text" : ""}`;
+
+        let eventLabel = "";
+        switch (event.type) {
+          case "need_added":
+            eventLabel = `ثبت نیاز آزاد: «${event.after?.freeTextName || event.payload?.name || "قلم"}» (${event.after?.quantity ?? event.payload?.quantity ?? 1} ${event.after?.unit ?? event.payload?.unit ?? ""})`;
+            break;
+          case "need_updated":
+            eventLabel = `اصلاح ردیف: «${event.after?.freeTextName || "قلم"}»`;
+            break;
+          case "need_resolved":
+            eventLabel = `تأیید کالای مرجع: «${event.after?.resolvedReference?.title || event.payload?.reference?.title || ""}»`;
+            break;
+          case "event_reverted":
+            eventLabel = `بازگردانی رخداد قبلی (${event.targetEventId || ""})`;
+            break;
+          default:
+            eventLabel = event.type;
+        }
+        text.textContent = eventLabel;
+        info.append(time, text);
+        row.append(info);
+
+        // Actions on row
+        if (isReverted) {
+          const badge = document.createElement("span");
+          badge.className = "badge badge-reverted";
+          badge.textContent = "بازگردانده شده";
+          row.append(badge);
+        } else if (event.type !== "event_reverted") {
+          const revertBtn = document.createElement("button");
+          revertBtn.type = "button";
+          revertBtn.className = "btn-revert";
+          revertBtn.textContent = "↩ بازگردانی";
+          revertBtn.setAttribute("aria-label", `بازگردانی تغییر: ${eventLabel}`);
+          revertBtn.addEventListener("click", async () => {
+            revertBtn.disabled = true;
+            try {
+              await callApi("revert_order_event", { eventId: event.id });
+              showToast("تغییر انتخاب‌شده بازگردانده شد.");
+            } catch (err) {
+              if (typeof alert === "function") alert(err.message || "بازگردانی با خطا مواجه شد.");
+            } finally {
+              revertBtn.disabled = false;
+            }
+          });
+          row.append(revertBtn);
+        }
+
+        return row;
+      }
+
+      // Main Render
+      function render() {
+        const items = state.draft?.items ?? [];
+        const ambiguities = items.filter((item) => item.status === "needs_completion");
+        const events = state.draft?.events ?? [];
+        const draftStatus = state.draft?.status ?? "open";
+
+        if (summaryEl) {
+          summaryEl.textContent = `${items.length} ردیف · ${ambiguities.length} ابهام`;
+        }
+        if (summaryItemsEl) {
+          summaryItemsEl.textContent = `${items.length} ردیف`;
+        }
+        if (summaryAmbiguitiesEl) {
+          summaryAmbiguitiesEl.textContent = `${ambiguities.length} ابهام`;
+        }
+
+        if (statusEl) {
+          statusEl.className = `badge ${draftStatus}`;
+          statusEl.textContent = statusText(draftStatus);
+        }
+
+        if (itemsCountBadge) itemsCountBadge.textContent = String(items.length);
+        if (ambiguitiesCountBadge) ambiguitiesCountBadge.textContent = String(ambiguities.length);
+
+        // Suggested Action Guidance Banner
+        if (suggestedActionEl) {
+          if (draftStatus === "open" && items.length === 0) {
+            suggestedActionEl.innerHTML = "<strong>وضعیت:</strong> پیش‌نویس خالی است؛ نیازهای دارویی را در فرم بالا ثبت کنید.";
+          } else if (ambiguities.length > 0) {
+            suggestedActionEl.innerHTML = `<strong>اقدام پیشنهادی:</strong> تکمیل ${ambiguities.length} مورد مبهم پیش از بازبینی نهایی سفارش.`;
+          } else {
+            suggestedActionEl.innerHTML = "<strong>وضعیت:</strong> پیش‌نویس آماده بازبینی است؛ همهٔ ردیف‌ها کالای مرجع مشخص دارند.";
+          }
+        }
+
+        // Render Columns
+        if (itemsEl) {
+          itemsEl.replaceChildren(...(items.length ? items.map(renderItemCard) : [empty("هنوز نیازی در پیش‌نویس ثبت نشده است.")]));
+        }
+        if (ambiguitiesEl) {
+          ambiguitiesEl.replaceChildren(...(ambiguities.length ? ambiguities.map(renderAmbiguityCard) : [empty("همهٔ ردیف‌ها آمادهٔ بازبینی‌اند. ✨")]));
+        }
+
+        // Render History
+        if (historyEl) {
+          const revertedTargetIds = getActiveRevertedTargetIds(events);
+          const recentEvents = events.slice(0, 15);
+          historyEl.replaceChildren(...(recentEvents.length ? recentEvents.map((e) => renderEventRow(e, revertedTargetIds)) : [empty("هنوز تغییری ثبت نشده است.")]));
+        }
+      }
+
+      // Drawer Logic
+      function openDrawer(itemId) {
+        state.selectedItemId = itemId;
+        state.selectedCandidate = null;
+
+        const item = state.draft?.items?.find((i) => i.id === itemId);
+        if (!item) return;
+
+        if (drawerTitleEl) drawerTitleEl.textContent = `رفع ابهام: ${item.freeTextName}`;
+        if (drawerStatusBadge) {
+          drawerStatusBadge.className = `badge ${item.status}`;
+          drawerStatusBadge.textContent = statusText(item.status);
+        }
+
+        if (drawerNameInput) drawerNameInput.value = item.freeTextName || "";
+        if (drawerQuantityInput) drawerQuantityInput.value = item.quantity || 1;
+        if (drawerUnitInput) drawerUnitInput.value = item.unit || "";
+        if (drawerNoteInput) drawerNoteInput.value = item.note || "";
+
+        if (catalogSearchInput) catalogSearchInput.value = item.freeTextName || "";
+        if (drawerConfirmBtn) drawerConfirmBtn.disabled = true;
+
+        if (drawerBackdrop?.classList?.add) drawerBackdrop.classList.add("active");
+        if (drawerPanel?.classList?.add) drawerPanel.classList.add("active");
+        if (drawerPanel?.setAttribute) drawerPanel.setAttribute("aria-hidden", "false");
+
+        // Auto trigger catalog search
+        searchCatalogSuggestions(item.freeTextName);
+      }
+
+      function closeDrawer() {
+        state.selectedItemId = null;
+        state.selectedCandidate = null;
+        if (drawerBackdrop?.classList?.remove) drawerBackdrop.classList.remove("active");
+        if (drawerPanel?.classList?.remove) drawerPanel.classList.remove("active");
+        if (drawerPanel?.setAttribute) drawerPanel.setAttribute("aria-hidden", "true");
+        if (catalogCandidatesEl) catalogCandidatesEl.innerHTML = "";
+      }
+
+      if (drawerCloseBtn) drawerCloseBtn.addEventListener("click", closeDrawer);
+      if (drawerCancelBtn) {
+        drawerCancelBtn.addEventListener("click", () => {
+          closeDrawer();
+          showToast("فعلاً فقط نیاز آزاد ذخیره شد؛ بعداً می‌توانید کالای دقیق را تعیین کنید.");
+        });
+      }
+      if (drawerBackdrop) drawerBackdrop.addEventListener("click", closeDrawer);
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && drawerPanel?.classList?.contains && drawerPanel.classList.contains("active")) {
+          closeDrawer();
+        }
+      });
+
+      // Quick Update from Drawer
+      if (drawerUpdateBtn) {
+        drawerUpdateBtn.addEventListener("click", async () => {
+          if (!state.selectedItemId) return;
+          const name = drawerNameInput?.value?.trim() || "";
+          const quantity = Number(drawerQuantityInput?.value);
+          const unit = drawerUnitInput?.value?.trim() || "";
+          const note = drawerNoteInput?.value?.trim() || "";
+
+          if (!name) {
+            if (typeof alert === "function") alert("نام کالا لازم است.");
+            return;
+          }
+          if (quantity <= 0) {
+            if (typeof alert === "function") alert("تعداد باید بزرگ‌تر از صفر باشد.");
+            return;
+          }
+
+          drawerUpdateBtn.disabled = true;
+          try {
+            await callApi("update_order_need", {
+              id: state.selectedItemId,
+              name,
+              quantity,
+              unit,
+              note,
+            });
+            showToast("ردیف پیش‌نویس اصلاح شد.");
+          } catch (err) {
+            if (typeof alert === "function") alert(err.message || "خطا در اصلاح ردیف.");
+          } finally {
+            drawerUpdateBtn.disabled = false;
+          }
+        });
+      }
+
+      // Catalog Search Logic
+      let debounceTimer = null;
+      async function searchCatalogSuggestions(query) {
+        if (!catalogCandidatesEl) return;
+        if (!query || !query.trim()) {
+          catalogCandidatesEl.replaceChildren(empty("عبارت جستجو را وارد کنید."));
+          return;
+        }
+
+        if (catalogLoadingEl?.classList?.remove) catalogLoadingEl.classList.remove("hidden");
+        catalogCandidatesEl.innerHTML = "";
+
+        try {
+          const res = await callApi("search_catalog", { query: query.trim(), limit: 15 });
+          const candidates = res?.structuredContent?.results || [];
+
+          if (candidates.length === 0) {
+            catalogCandidatesEl.replaceChildren(empty("هیچ کالای منطبقی در کاتالوگ یافت نشد."));
+            return;
+          }
+
+          catalogCandidatesEl.replaceChildren(...candidates.map((c, idx) => {
+            const card = document.createElement("div");
+            card.className = "candidate-card";
+            card.setAttribute("role", "radio");
+            card.setAttribute("aria-checked", "false");
+            card.setAttribute("tabindex", "0");
+
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "candidate-choice";
+            radio.id = `cand-${idx}`;
+
+            const info = document.createElement("div");
+            info.className = "candidate-info";
+
+            const title = document.createElement("div");
+            title.className = "candidate-title";
+            title.textContent = c.persianTitle || c.title;
+
+            const meta = document.createElement("div");
+            meta.className = "candidate-meta";
+
+            const genTag = document.createElement("span");
+            genTag.className = "meta-tag";
+            genTag.textContent = `کد ژنریک: ${c.genericCode}`;
+            meta.append(genTag);
+
+            if (c.brandCode) {
+              const brandTag = document.createElement("span");
+              brandTag.className = "meta-tag";
+              brandTag.textContent = `کد برند: ${c.brandCode}`;
+              meta.append(brandTag);
+            }
+
+            if (c.dosageForm) {
+              const formTag = document.createElement("span");
+              formTag.className = "meta-tag";
+              formTag.textContent = `شکل: ${c.dosageForm}`;
+              meta.append(formTag);
+            }
+
+            if (c.strength) {
+              const strTag = document.createElement("span");
+              strTag.className = "meta-tag";
+              strTag.textContent = `دوز: ${c.strength}`;
+              meta.append(strTag);
+            }
+
+            if (c.sellPrice) {
+              const priceTag = document.createElement("span");
+              priceTag.className = "meta-tag";
+              try {
+                priceTag.textContent = `قیمت: ${Number(c.sellPrice).toLocaleString("fa-IR")} ریال`;
+              } catch {
+                priceTag.textContent = `قیمت: ${c.sellPrice} ریال`;
+              }
+              meta.append(priceTag);
+            }
+
+            info.append(title, meta);
+            card.append(radio, info);
+
+            const selectThisCandidate = () => {
+              const allCards = document.querySelectorAll(".candidate-card");
+              if (allCards) {
+                allCards.forEach((el) => {
+                  if (el.classList?.remove) el.classList.remove("selected");
+                  if (el.setAttribute) el.setAttribute("aria-checked", "false");
+                });
+              }
+              if (card.classList?.add) card.classList.add("selected");
+              if (card.setAttribute) card.setAttribute("aria-checked", "true");
+              radio.checked = true;
+
+              state.selectedCandidate = c;
+              if (drawerConfirmBtn) drawerConfirmBtn.disabled = false;
+            };
+
+            card.addEventListener("click", selectThisCandidate);
+            card.addEventListener("keydown", (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                selectThisCandidate();
+              }
+            });
+
+            return card;
+          }));
+        } catch (err) {
+          catalogCandidatesEl.replaceChildren(empty(err.message || "خطا در استعلام کاتالوگ."));
+        } finally {
+          if (catalogLoadingEl?.classList?.add) catalogLoadingEl.classList.add("hidden");
+        }
+      }
+
+      if (btnSearchCatalog) {
+        btnSearchCatalog.addEventListener("click", () => searchCatalogSuggestions(catalogSearchInput?.value));
+      }
+
+      if (catalogSearchInput) {
+        catalogSearchInput.addEventListener("input", (e) => {
+          clearTimeout(debounceTimer);
+          const q = e?.target?.value ?? catalogSearchInput.value;
+          debounceTimer = setTimeout(() => searchCatalogSuggestions(q), 400);
+        });
+      }
+
+      // Confirm Resolution Action
+      if (drawerConfirmBtn) {
+        drawerConfirmBtn.addEventListener("click", async () => {
+          if (!state.selectedItemId || !state.selectedCandidate) return;
+
+          const candidate = state.selectedCandidate;
+          drawerConfirmBtn.disabled = true;
+
+          try {
+            await callApi("resolve_order_need", {
+              id: state.selectedItemId,
+              reference: {
+                title: candidate.persianTitle || candidate.title,
+                genericCode: candidate.genericCode ? String(candidate.genericCode).trim() : "",
+                brandCode: candidate.brandCode ? String(candidate.brandCode).trim() : "",
+                dosageForm: candidate.dosageForm ? String(candidate.dosageForm).trim() : "",
+                strength: candidate.strength ? String(candidate.strength).trim() : "",
+                ...(candidate.goodId ? { goodId: String(candidate.goodId) } : {}),
+              },
+            });
+            closeDrawer();
+            showToast("کالای دقیق در پیش‌نویس تأیید شد.");
+          } catch (err) {
+            if (typeof alert === "function") alert(err.message || "تأیید کالا با خطا مواجه شد.");
+            drawerConfirmBtn.disabled = false;
+          }
+        });
+      }
+
+      // Form Submission (Rapid Need Capture)
+      if (formEl) {
+        formEl.addEventListener("submit", async (event) => {
+          if (event && typeof event.preventDefault === "function") event.preventDefault();
+          if (errorEl) errorEl.textContent = "";
+
+          const nameInput = document.querySelector("#name") || document.querySelector("#need-name");
+          const quantityInput = document.querySelector("#quantity") || document.querySelector("#need-qty");
+          const unitInput = document.querySelector("#unit") || document.querySelector("#need-unit");
+          const noteInput = document.querySelector("#note") || document.querySelector("#need-note");
+
+          const name = nameInput?.value?.trim() || "";
+          const quantity = Number(quantityInput?.value);
+          const unit = unitInput?.value?.trim() || "";
+          const note = noteInput?.value?.trim() || "";
+
+          if (!name) {
+            if (errorEl) errorEl.textContent = "نام آزاد کالا الزامی است.";
+            return;
+          }
+          if (!Number.isFinite(quantity) || quantity <= 0) {
+            if (errorEl) errorEl.textContent = "تعداد باید عدد مثبت باشد.";
+            return;
+          }
+
+          if (submitEl) submitEl.disabled = true;
+          try {
+            await callApi("add_order_need", {
+              name,
+              quantity,
+              unit,
+              ...(note ? { note } : {}),
+            });
+            if (typeof formEl.reset === "function") formEl.reset();
+            if (typeof nameInput?.focus === "function") nameInput.focus();
+            showToast("به پیش‌نویس اضافه شد.");
+          } catch (error) {
+            if (errorEl) errorEl.textContent = error?.message || "ثبت نیاز ناموفق بود.";
+          } finally {
+            if (submitEl) submitEl.disabled = false;
+          }
+        });
+      }
+
+      // Initialization Sequence
+      async function initialize() {
+        const isEmbedded = typeof window !== "undefined" && window.parent && window.parent !== window;
+
+        if (isEmbedded) {
+          try {
+            const initResponse = await Promise.race([
+              request("ui/initialize", {
+                appInfo: { name: "panelph-order-desk", version: "0.2.0" },
+                appCapabilities: {},
+                protocolVersion: "2026-01-26",
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("Handshake timeout")), 1200)),
+            ]);
+
+            state.mode = "mcp";
+            notify("ui/notifications/initialized", {});
+
+            if (initResponse?.hostContext?.theme) {
+              applyTheme(initResponse.hostContext.theme);
+            }
+
+            await callApi("get_order_draft");
+            return;
+          } catch (err) {
+            console.warn("MCP handshake unfulfilled, falling back to REST transport", err);
+          }
+        }
+
+        // REST transport fallback for web browser
+        state.mode = "rest";
+        await callApi("get_order_draft");
+      }
+
+      initialize().catch((error) => {
+        if (errorEl) errorEl.textContent = "اتصال به سرویس پیش‌نویس برقرار نشد.";
+        console.error("Initialization failed", error);
+      });
+    </script>
+  </body>
+</html>

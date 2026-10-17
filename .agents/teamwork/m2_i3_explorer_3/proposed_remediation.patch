@@ -1,0 +1,596 @@
+--- a/src/catalog-resolver.js
++++ b/src/catalog-resolver.js
+@@ -63,15 +63,28 @@
+ // Disallowed standalone generic aliases (dosage forms, inventory status, units)
+ export const GENERIC_DISALLOWED_ALIASES = new Set([
+   "ویال", "شربت", "کرم", "قرص", "کپسول", "امپول", "قطره", "پماد", "ژل",
+-  "سوسپانسیون", "محلول", "اسپری", "سرم", "شیاف", "لوسیون", "پودر", "ساسه",
++  "سوسپانسیون", "محلول", "اسپری", "سرم", "شیاف", "لوسیون", "پودر", "ساشه", "ساسه",
+   "vial", "syrup", "cream", "tablet", "capsule", "ampoule", "drops", "ointment",
+-  "gel", "suspension", "solution", "spray", "serum", "suppository", "lotion", "powder",
++  "gel", "suspension", "solution", "spray", "serum", "suppository", "lotion", "powder", "sachet",
+   "ناموجود", "موجود", "out of stock"
+ ]);
+ 
+ export const GENERIC_MEASURE_OR_STOP_TOKENS = new Set([
+   ...GENERIC_DISALLOWED_ALIASES,
+-  "میلی", "گرم", "لیتر", "واحد", "درصد", "mg", "ml", "g", "iu", "mcg", "در", "برای", "با"
++  "میلی", "گرم", "لیتر", "واحد", "درصد", "mg", "ml", "g", "iu", "mcg", "در", "برای", "با",
++  "item", "دارو", "out", "of", "stock", "است"
++]);
++
++export const ISOLATED_UNITS = new Set([
++  "mg", "ml", "g", "iu", "mcg", "واحد", "درصد"
++]);
++
++export const ISOLATED_STATUS_TERMS = new Set([
++  "ناموجود", "موجود", "out of stock", "دارو ناموجود", "item out of stock"
++]);
++
++export const DOSAGE_MEASURE_TOKENS = new Set([
++  "میلی", "گرم", "لیتر", "واحد", "درصد", "mg", "ml", "g", "iu", "mcg"
+ ]);
+ 
+ export const BUILTIN_REFERENCE_ITEMS = [
+@@ -259,7 +272,12 @@
+  * Computes candidate relevance score in [0.0, 1.0].
+  */
+ export function scoreCandidate(query, candidate) {
+-  const cleanCodeQuery = normalizeDigits(query.trim());
++  if (!query || typeof query !== "string") return 0;
++  if (!/[\p{L}\p{N}]/u.test(query)) return 0;
++
++  const cleanDigits = normalizeDigits(query.trim());
++  const cleanCodeQuery = cleanDigits.replace(/[^\w\d]/g, "");
++  const rawCodeQuery = cleanDigits;
+   const normQuery = normalizeText(query);
+   if (!normQuery && !cleanCodeQuery) return 0;
+ 
+@@ -270,14 +288,14 @@
+ 
+   // 1. Exact Code Matching (Tier 1: 0.85 - 1.00)
+   if (cleanCodeQuery) {
+-    if (genericCode && cleanCodeQuery === genericCode) return 1.0;
+-    if (barcode && cleanCodeQuery === barcode) return 1.0;
+-    if (goodId && cleanCodeQuery.toLowerCase() === goodId) return 1.0;
+-    if (brandCode && cleanCodeQuery === brandCode) return 0.85;
++    if (genericCode && (cleanCodeQuery === genericCode || rawCodeQuery === genericCode)) return 1.0;
++    if (barcode && (cleanCodeQuery === barcode || rawCodeQuery === barcode)) return 1.0;
++    if (goodId && (cleanCodeQuery.toLowerCase() === goodId || rawCodeQuery.toLowerCase() === goodId)) return 1.0;
++    if (brandCode && (cleanCodeQuery === brandCode || rawCodeQuery === brandCode)) return 0.85;
+   }
+ 
+-  // Code Prefix Match (0.80)
+-  if (cleanCodeQuery && cleanCodeQuery.length >= 3) {
++  // Code Prefix Match (0.80) - only for numeric codes >= 3 digits
++  if (/^\d{3,}$/.test(cleanCodeQuery)) {
+     if (genericCode.startsWith(cleanCodeQuery) || brandCode.startsWith(cleanCodeQuery)) {
+       return 0.80;
+     }
+@@ -294,11 +312,48 @@
+   if (normQuery === normTitle || normQuery === normPersianTitle) return 0.99;
+   if (normAliases.includes(normQuery)) return 0.97;
+ 
++  // Placeholder inventory status item (g-1006) must only match exact code or exact canonical title/alias
++  if (candidate.goodId === "g-1006" || genericCode === "00999") {
++    return 0;
++  }
++
++  // Standalone disallowed dosage forms (e.g. "ویال", "شربت", "کرم", "قرص", "کپسول", "vial", "cream")
++  if (GENERIC_DISALLOWED_ALIASES.has(normQuery)) {
++    return 0;
++  }
++
++  // Isolated units (e.g. "mg", "ml", "واحد")
++  if (ISOLATED_UNITS.has(normQuery)) {
++    return 0;
++  }
++
++  // Isolated status terms
++  if (ISOLATED_STATUS_TERMS.has(normQuery)) {
++    return 0;
++  }
++
++  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
++
++  // Pure dosage queries containing only numbers and dosage units (e.g. "۵۰۰ میلی گرم", "500 mg")
++  const hasDigitToken = queryTokens.some((t) => /^\d+$/.test(t));
++  const hasDosageToken = queryTokens.some((t) => DOSAGE_MEASURE_TOKENS.has(t));
++  const allTokensAreDosageOrDigit = queryTokens.length > 0 && queryTokens.every(
++    (t) => /^\d+$/.test(t) || DOSAGE_MEASURE_TOKENS.has(t)
++  );
++  if (hasDigitToken && hasDosageToken && allTokensAreDosageOrDigit) {
++    return 0;
++  }
++
+   // 3. Title Starts With Query (Tier 3: 0.90)
+-  if (normTitle.startsWith(normQuery) || normPersianTitle.startsWith(normQuery)) return 0.90;
++  if (
++    normQuery.length >= 3 &&
++    !GENERIC_MEASURE_OR_STOP_TOKENS.has(normQuery) &&
++    (normTitle.startsWith(normQuery) || normPersianTitle.startsWith(normQuery))
++  ) {
++    return 0.90;
++  }
+ 
+   // 4. Multi-Token Overlap & Attribute Boosting (Tier 4)
+-  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
+   if (queryTokens.length > 0) {
+     const candidateTokens = new Set([
+       ...normTitle.split(" "),
+@@ -316,14 +371,16 @@
+         matchedTokens++;
+         if (!isGeneric) matchedSubstantiveTokens++;
+       } else {
+-        // Partial token containment
+-        for (const ct of candidateTokens) {
+-          if (ct.includes(qt) || qt.includes(ct)) {
+-            matchedTokens += 0.5;
+-            if (!isGeneric && !GENERIC_MEASURE_OR_STOP_TOKENS.has(ct) && !/^\d+$/.test(ct)) {
+-              matchedSubstantiveTokens += 0.5;
++        // Partial token containment - only for non-generic tokens >= 3 chars
++        if (!isGeneric && qt.length >= 3) {
++          for (const ct of candidateTokens) {
++            if (!GENERIC_MEASURE_OR_STOP_TOKENS.has(ct) && !/^\d+$/.test(ct)) {
++              if (ct.includes(qt) || qt.includes(ct)) {
++                matchedTokens += 0.5;
++                matchedSubstantiveTokens += 0.5;
++                break;
++              }
+             }
+-            break;
+           }
+         }
+       }
+@@ -347,7 +404,11 @@
+   }
+ 
+   // 5. Substring Containment (Tier 5)
+-  if (normTitle.includes(normQuery) || normPersianTitle.includes(normQuery)) {
++  if (
++    normQuery.length >= 3 &&
++    !GENERIC_MEASURE_OR_STOP_TOKENS.has(normQuery) &&
++    (normTitle.includes(normQuery) || normPersianTitle.includes(normQuery))
++  ) {
+     const lenRatio = Math.min(1, normQuery.length / Math.max(normTitle.length, 1));
+     const subScore = 0.50 + 0.30 * lenRatio;
+     return Math.round(subScore * 100) / 100;
+@@ -392,7 +453,26 @@
+     dosageForm = null,
+   } = options;
+ 
+-  if (!query || typeof query !== "string" || !query.trim()) {
++  if (!query || typeof query !== "string" || !/[\p{L}\p{N}]/u.test(query)) {
++    return [];
++  }
++
++  const normQuery = normalizeText(query);
++  if (
++    GENERIC_DISALLOWED_ALIASES.has(normQuery) ||
++    ISOLATED_UNITS.has(normQuery) ||
++    ISOLATED_STATUS_TERMS.has(normQuery)
++  ) {
++    return [];
++  }
++
++  const queryTokens = normQuery.split(" ").filter((t) => t.length > 0);
++  const hasDigitToken = queryTokens.some((t) => /^\d+$/.test(t));
++  const hasDosageToken = queryTokens.some((t) => DOSAGE_MEASURE_TOKENS.has(t));
++  const allTokensAreDosageOrDigit = queryTokens.length > 0 && queryTokens.every(
++    (t) => /^\d+$/.test(t) || DOSAGE_MEASURE_TOKENS.has(t)
++  );
++  if (hasDigitToken && hasDosageToken && allTokensAreDosageOrDigit) {
+     return [];
+   }
+ 
+@@ -419,9 +499,14 @@
+     }
+   }
+ 
+-  // Sort descending by score, tie-break by title
++  // Sort descending by score, tie-break by dual code match, then title
++  const cleanDigits = normalizeDigits(query.trim());
+   results.sort((a, b) => {
+     if (b.score !== a.score) return b.score - a.score;
++    const aDual = cleanDigits && a.genericCode === cleanDigits && a.brandCode === cleanDigits;
++    const bDual = cleanDigits && b.genericCode === cleanDigits && b.brandCode === cleanDigits;
++    if (aDual && !bDual) return -1;
++    if (!aDual && bDual) return 1;
+     return a.title.localeCompare(b.title);
+   });
+ 
+--- a/src/server.js
++++ b/src/server.js
+@@ -532,114 +532,115 @@
+ 
+   const mcpPath = "/mcp";
+   const httpServer = createServer(async (request, response) => {
+-    if (!request.url) return response.writeHead(400).end("Missing URL");
+-    const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
+-
+-    // 1. CORS Preflight Handler
+-    if (request.method === "OPTIONS") {
+-      if (url.pathname === mcpPath) {
+-        response.writeHead(204, {
+-          "Access-Control-Allow-Origin": "*",
+-          "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+-          "Access-Control-Allow-Headers": "content-type, mcp-session-id",
+-          "Access-Control-Expose-Headers": "Mcp-Session-Id",
+-        });
+-        return response.end();
+-      }
+-      if (url.pathname.startsWith("/api/")) {
+-        response.writeHead(204, {
+-          "Access-Control-Allow-Origin": "*",
+-          "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+-          "Access-Control-Allow-Headers": "Content-Type, Authorization, Mcp-Session-Id",
+-          "Access-Control-Expose-Headers": "Location",
+-        });
+-        return response.end();
+-      }
+-      return response.writeHead(404).end("Not Found");
+-    }
+-
+-    // 2. Static and Root Endpoints
+-    if (request.method === "GET" && url.pathname === "/") {
+-      return response.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end("PanelPH MCP App");
+-    }
+-    if (request.method === "GET" && url.pathname === "/order-desk.html") {
+-      return response.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(widgetHtml);
+-    }
+-
+-    // 3. MCP Streamable HTTP Transport
+-    if (url.pathname === mcpPath) {
+-      const mcpMethods = new Set(["POST", "GET", "DELETE"]);
+-      if (!mcpMethods.has(request.method ?? "")) {
++    try {
++      if (!request.url) return response.writeHead(400).end("Missing URL");
++      const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
++
++      // 1. CORS Preflight Handler
++      if (request.method === "OPTIONS") {
++        if (url.pathname === mcpPath) {
++          response.writeHead(204, {
++            "Access-Control-Allow-Origin": "*",
++            "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
++            "Access-Control-Allow-Headers": "content-type, mcp-session-id",
++            "Access-Control-Expose-Headers": "Mcp-Session-Id",
++          });
++          return response.end();
++        }
++        if (url.pathname.startsWith("/api/")) {
++          response.writeHead(204, {
++            "Access-Control-Allow-Origin": "*",
++            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
++            "Access-Control-Allow-Headers": "Content-Type, Authorization, Mcp-Session-Id",
++            "Access-Control-Expose-Headers": "Location",
++          });
++          return response.end();
++        }
+         return response.writeHead(404).end("Not Found");
+       }
+ 
+-      response.setHeader("Access-Control-Allow-Origin", "*");
+-      response.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+-      const server = createPanelServer(activeStore, activeAdapter, activeResolver);
+-      const transport = new StreamableHTTPServerTransport({
+-        sessionIdGenerator: undefined,
+-        enableJsonResponse: true,
+-      });
+-      response.on("close", () => {
+-        transport.close();
+-        server.close();
+-      });
+-      try {
+-        await server.connect(transport);
+-        await transport.handleRequest(request, response);
+-      } catch (error) {
+-        console.error("PanelPH MCP request failed", error);
+-        if (!response.headersSent) response.writeHead(500).end("Internal server error");
++      // 2. Static and Root Endpoints
++      if (request.method === "GET" && url.pathname === "/") {
++        return response.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end("PanelPH MCP App");
++      }
++      if (request.method === "GET" && url.pathname === "/order-desk.html") {
++        return response.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(widgetHtml);
+       }
+-      return;
+-    }
+ 
+-    // 4. REST API Endpoints (/api/*)
+-    if (url.pathname.startsWith("/api/")) {
+-      // GET /api/draft
+-      if (request.method === "GET" && url.pathname === "/api/draft") {
++      // 3. MCP Streamable HTTP Transport
++      if (url.pathname === mcpPath) {
++        const mcpMethods = new Set(["POST", "GET", "DELETE"]);
++        if (!mcpMethods.has(request.method ?? "")) {
++          return response.writeHead(404).end("Not Found");
++        }
++
++        response.setHeader("Access-Control-Allow-Origin", "*");
++        response.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
++        const server = createPanelServer(activeStore, activeAdapter, activeResolver);
++        const transport = new StreamableHTTPServerTransport({
++          sessionIdGenerator: undefined,
++          enableJsonResponse: true,
++        });
++        response.on("close", () => {
++          transport.close();
++          server.close();
++        });
+         try {
+-          const draft = await activeStore.getDraft();
+-          return sendJson(response, 200, { draft });
+-        } catch (err) {
+-          return sendError(response, 500, "SERVER_ERROR", err.message);
++          await server.connect(transport);
++          await transport.handleRequest(request, response);
++        } catch (error) {
++          console.error("PanelPH MCP request failed", error);
++          if (!response.headersSent) response.writeHead(500).end("Internal server error");
+         }
++        return;
+       }
+ 
+-      // POST /api/draft/needs
+-      if (request.method === "POST" && url.pathname === "/api/draft/needs") {
+-        let body;
+-        try {
+-          body = await readJsonBody(request);
+-        } catch (err) {
+-          return sendError(response, err.statusCode || 400, err.code || "INVALID_JSON", err.message);
++      // 4. REST API Endpoints (/api/*)
++      if (url.pathname.startsWith("/api/")) {
++        // GET /api/draft
++        if (request.method === "GET" && url.pathname === "/api/draft") {
++          try {
++            const draft = await activeStore.getDraft();
++            return sendJson(response, 200, { draft });
++          } catch (err) {
++            return sendError(response, 500, "SERVER_ERROR", err.message);
++          }
+         }
+ 
+-        const name = body.name?.trim();
+-        const quantity = Number(body.quantity);
++        // POST /api/draft/needs
++        if (request.method === "POST" && url.pathname === "/api/draft/needs") {
++          let body;
++          try {
++            body = await readJsonBody(request);
++          } catch (err) {
++            return sendError(response, err.statusCode || 400, err.code || "INVALID_JSON", err.message);
++          }
+ 
+-        if (!name) {
+-          return sendError(response, 400, "VALIDATION_ERROR", "نام نیاز الزامی است.");
+-        }
+-        if (!Number.isFinite(quantity) || quantity <= 0) {
+-          return sendError(response, 400, "VALIDATION_ERROR", "تعداد باید عدد مثبت باشد.");
+-        }
++          if (typeof body.name !== "string" || !body.name.trim()) {
++            return sendError(response, 400, "VALIDATION_ERROR", "نام نیاز الزامی است.");
++          }
++          const name = body.name.trim();
++          const quantity = Number(body.quantity);
+ 
+-        try {
+-          const draft = await activeStore.addNeed({
+-            name,
+-            quantity,
+-            unit: body.unit ?? "",
+-            note: body.note ?? "",
+-          });
+-          const need = draft.items[draft.items.length - 1];
+-          return sendJson(response, 201, { draft, need }, {
+-            Location: `/api/draft/needs/${need.id}`,
+-          });
+-        } catch (err) {
+-          return sendError(response, 400, "VALIDATION_ERROR", err.message);
++          if (!Number.isFinite(quantity) || quantity <= 0) {
++            return sendError(response, 400, "VALIDATION_ERROR", "تعداد باید عدد مثبت باشد.");
++          }
++
++          try {
++            const draft = await activeStore.addNeed({
++              name,
++              quantity,
++              unit: typeof body.unit === "string" ? body.unit : (body.unit != null ? String(body.unit) : ""),
++              note: typeof body.note === "string" ? body.note : (body.note != null ? String(body.note) : ""),
++            });
++            const need = draft.items[draft.items.length - 1];
++            return sendJson(response, 201, { draft, need }, {
++              Location: `/api/draft/needs/${need.id}`,
++            });
++          } catch (err) {
++            return sendError(response, 400, "VALIDATION_ERROR", err.message);
++          }
+         }
+-      }
+ 
+       // PATCH /api/draft/needs/:needId
+       const updateMatch = url.pathname.match(/^\/api\/draft\/needs\/([^/]+)$/);
+@@ -652,7 +653,7 @@
+           return sendError(response, err.statusCode || 400, err.code || "INVALID_JSON", err.message);
+         }
+ 
+-        if (body.name !== undefined && !body.name?.trim()) {
++        if (body.name !== undefined && (typeof body.name !== "string" || !body.name.trim())) {
+           return sendError(response, 400, "VALIDATION_ERROR", "نام نیاز نمی‌تواند خالی باشد.");
+         }
+         if (body.quantity !== undefined) {
+@@ -665,10 +666,10 @@
+         try {
+           const draft = await activeStore.updateNeed({
+             id: needId,
+-            name: body.name,
+-            quantity: body.quantity,
+-            unit: body.unit,
+-            note: body.note,
++            name: typeof body.name === "string" ? body.name.trim() : body.name,
++            quantity: body.quantity !== undefined ? Number(body.quantity) : undefined,
++            unit: body.unit !== undefined ? (typeof body.unit === "string" ? body.unit : String(body.unit)) : undefined,
++            note: body.note !== undefined ? (typeof body.note === "string" ? body.note : String(body.note)) : undefined,
+           });
+           return sendJson(response, 200, { draft });
+         } catch (err) {
+@@ -691,7 +692,7 @@
+         }
+ 
+         const ref = body.reference;
+-        if (!ref || !ref.title || !ref.title.trim()) {
++        if (!ref || typeof ref !== "object" || typeof ref.title !== "string" || !ref.title.trim()) {
+           return sendError(response, 400, "VALIDATION_ERROR", "عنوان کالای مرجع لازم است.");
+         }
+ 
+@@ -724,7 +725,7 @@
+           return sendError(response, err.statusCode || 400, err.code || "INVALID_JSON", err.message);
+         }
+ 
+-        const eventId = body.eventId?.trim();
++        const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
+         if (!eventId) {
+           return sendError(response, 400, "VALIDATION_ERROR", "شناسه رخداد الزامی است.");
+         }
+@@ -807,6 +808,11 @@
+ 
+     // 5. Fallback for all other routes
+     return response.writeHead(404).end("Not Found");
++    } catch (unhandledError) {
++      if (!response.headersSent) {
++        return sendError(response, 500, "INTERNAL_SERVER_ERROR", unhandledError.message || "Internal server error");
++      }
++    }
+   });
+ 
+   return httpServer.listen(port, () => {
+--- a/test/catalog-resolver.test.js
++++ b/test/catalog-resolver.test.js
+@@ -190,3 +190,51 @@
+   assert.strictEqual(sampleVialHits[0].goodId, "g-1007");
+   assert.ok(sampleVialHits[0].score >= 0.95);
+ });
++
++test("CR_16: Punctuation-only queries reject all matches and return empty array", () => {
++  for (const p of [",", "-", "--", ";", ":", "()", "\u200c"]) {
++    const hits = searchCatalog(p);
++    assert.strictEqual(hits.length, 0, `Punctuation '${p}' must return 0 hits`);
++    const res = resolveItem(p);
++    assert.strictEqual(res.resolved, false, `Punctuation '${p}' must not resolve`);
++  }
++});
++
++test("CR_17: Isolated units and pure dosages reject false-positive candidate resolution", () => {
++  for (const u of ["mg", "ml", "واحد", "۵۰۰ میلی گرم", "500 mg"]) {
++    const hits = searchCatalog(u);
++    assert.strictEqual(hits.length, 0, `Isolated unit/dosage '${u}' must yield 0 hits`);
++    const res = resolveItem(u);
++    assert.strictEqual(res.suggestedReference, null, `Isolated unit/dosage '${u}' must not suggest reference`);
++    assert.strictEqual(res.resolved, false);
++  }
++});
++
++test("CR_18: Standalone dosage forms do not auto-resolve to specific medicines", () => {
++  for (const form of ["ویال", "شربت", "کرم", "قرص", "کپسول", "cream", "vial"]) {
++    const res = resolveItem(form);
++    assert.strictEqual(res.resolved, false, `Standalone dosage form '${form}' must not auto-resolve`);
++  }
++});
++
++test("CR_19: Inventory status phrases do not match Out of Stock Item unless canonical title/alias", () => {
++  for (const q of ["سفتریاکسون ناموجود", "دارو ناموجود", "ceftriaxone out of stock", "item out of stock"]) {
++    const hits = searchCatalog(q);
++    assert.strictEqual(hits.some((h) => h.goodId === "g-1006"), false, `Query '${q}' must not match g-1006`);
++  }
++  const legitimateTitle = searchCatalog("out of stock item");
++  assert.ok(legitimateTitle.length > 0);
++  assert.strictEqual(legitimateTitle[0].goodId, "g-1006");
++
++  const legitimateAlias = searchCatalog("داروی ناموجود");
++  assert.ok(legitimateAlias.length > 0);
++  assert.strictEqual(legitimateAlias[0].goodId, "g-1006");
++});
++
++test("CR_20: Dual genericCode and brandCode match takes precedence over genericCode-only tie for 08234", () => {
++  const hits = searchCatalog("08234");
++  assert.ok(hits.length > 0);
++  assert.strictEqual(hits[0].goodId, "g-1002-diphen");
++  assert.strictEqual(hits[0].genericCode, "08234");
++  assert.strictEqual(hits[0].score, 1.0);
++});
+--- a/test/server-rest.test.js
++++ b/test/server-rest.test.js
+@@ -317,6 +317,72 @@
+     const data = await res.json();
+     assert.strictEqual(data.error?.code, "INVALID_JSON");
+   });
++
++  await t.test("POST /api/draft/needs rejects non-string name types without server crash", async () => {
++    for (const badName of [12345, true, { drug: "Amox" }, [1, 2]]) {
++      const res = await fetch(`${env.baseUrl}/api/draft/needs`, {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ name: badName, quantity: 1 }),
++      });
++      assert.strictEqual(res.status, 400);
++      const data = await res.json();
++      assert.strictEqual(data.error?.code, "VALIDATION_ERROR");
++    }
++  });
++
++  await t.test("PATCH /api/draft/needs/:needId rejects non-string name types without server crash", async () => {
++    const addRes = await fetch(`${env.baseUrl}/api/draft/needs`, {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ name: "آسپرین", quantity: 1 }),
++    });
++    const { need } = await addRes.json();
++
++    for (const badName of [9999, false, { sub: "test" }]) {
++      const res = await fetch(`${env.baseUrl}/api/draft/needs/${need.id}`, {
++        method: "PATCH",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ name: badName }),
++      });
++      assert.strictEqual(res.status, 400);
++      const data = await res.json();
++      assert.strictEqual(data.error?.code, "VALIDATION_ERROR");
++    }
++  });
++
++  await t.test("POST /api/draft/needs/:needId/resolve rejects non-string reference title without server crash", async () => {
++    const addRes = await fetch(`${env.baseUrl}/api/draft/needs`, {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ name: "آسپرین", quantity: 1 }),
++    });
++    const { need } = await addRes.json();
++
++    for (const badTitle of [12345, true, { sub: "title" }]) {
++      const res = await fetch(`${env.baseUrl}/api/draft/needs/${need.id}/resolve`, {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ reference: { title: badTitle } }),
++      });
++      assert.strictEqual(res.status, 400);
++      const data = await res.json();
++      assert.strictEqual(data.error?.code, "VALIDATION_ERROR");
++    }
++  });
++
++  await t.test("POST /api/draft/revert rejects non-string eventId without server crash", async () => {
++    for (const badEventId of [12345, true, {}]) {
++      const res = await fetch(`${env.baseUrl}/api/draft/revert`, {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ eventId: badEventId }),
++      });
++      assert.strictEqual(res.status, 400);
++      const data = await res.json();
++      assert.strictEqual(data.error?.code, "VALIDATION_ERROR");
++    }
++  });
+ });
+ 
+ test("MCP Protocol — Expanded Tools on /mcp", async (t) => {
