@@ -1,8 +1,13 @@
 # Bale Med Prices
 
-Private repository: `hosseintajdari/Bale-Med-Prices`
-
 Consumer medicine price finder extracted from the observed pricing logic in Qanoon Pharma, integrated with live public medicine pricing sources and twin bots for Bale and Telegram.
+
+## Status
+
+- ✅ Shared search and pricing API with Persian and English medicine-name handling.
+- ✅ Bale and Telegram bot integrations are included.
+- ✅ Automated tests are available through `npm test`.
+- 🚧 Public screenshots and direct bot launch links have not been added yet.
 
 ## Quick Start
 
