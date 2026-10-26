@@ -28,7 +28,7 @@ _Avoid_: Uncontrolled image copying, permanent media storage without a caching p
 A post-resolution reference to similar products listed by TTAC. Similar products may help a patient compare identities after a medicine is resolved, but they should not drive initial search ranking or replace the selected medicine.
 _Avoid_: Steering the patient away from the selected medicine, using similar products as primary search results
 
-**Qanoon Pharma**:
+**Internal Pricing Source**:
 The pharmacy-oriented source for richer pricing and pharmacy software logic. It is useful for price calculation, but its model is not the patient-facing language by default.
 _Avoid_: Patient medicine catalog, TTAC replacement
 

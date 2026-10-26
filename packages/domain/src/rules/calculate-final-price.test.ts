@@ -23,7 +23,7 @@ test("calculateFinalPrice applies tax, toll, technical fee, and profit for pharm
       packLabel: "box of 100 capsules",
       ttacCode: "TTAC-AMOX-500",
       sources: [
-        { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+        { key: "internal", label: "Internal", role: "pricing", priority: 1 },
         { key: "ttac", label: "TTAC", role: "reference", priority: 1 }
       ]
     },
@@ -89,7 +89,7 @@ test("calculateFinalPrice reports missing cost and skips technical fee for non-p
       packLabel: "single tube",
       ttacCode: "TTAC-ADLT-CREAM",
       sources: [
-        { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+        { key: "internal", label: "Internal", role: "pricing", priority: 1 },
         { key: "ttac", label: "TTAC", role: "reference", priority: 1 }
       ]
     },

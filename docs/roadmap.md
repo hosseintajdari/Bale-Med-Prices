@@ -21,7 +21,7 @@ One channel-neutral API powers:
 
 ## Source Responsibilities
 
-- `Qanoon`: consumer unit price
+- Internal pricing source: consumer unit price
 - `TTAC`: medicine identity, drug info, rare drug, enrichment
 - `Ghaza Daru` web: barcode authenticity (no API — adapter only)
 - `Payam Darousaz`: secondary reference

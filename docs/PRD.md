@@ -66,7 +66,7 @@ As a patient, I want to search for a medicine in Persian or English and see its 
 
 ## Source Strategy
 
-- `Qanoon` pricing logic remains the richer price engine for consumer price output
+- Internal pricing logic remains the richer price engine for consumer price output
 - `TTAC` is the main reference for full medicine information for patients
 - Rich `TTAC` detail-page information should enrich the resolved medicine result after selection, not crowd the initial selection menu
 - `TTAC` detail-page fetching can be implemented separately from the first medicine-selection module, provided the response contract leaves room for it

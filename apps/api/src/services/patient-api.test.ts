@@ -224,7 +224,7 @@ test("goodsController default search keeps source metadata but hides internal fi
   assert.equal(result.body.total, 1);
   assert.equal(result.body.items[0].id, "g-1003");
   assert.equal(result.body.items[0].consumerUnitPrice, 96000);
-  assert.equal(result.body.items[0].sources[0].key, "qanoon");
+  assert.equal(result.body.items[0].sources[0].key, "internal");
   assert.equal(result.body.items[0].sources[1].key, "ttac");
   assert.equal("internalCode" in result.body.items[0], false);
   assert.equal("barcode" in result.body.items[0], false);
@@ -240,7 +240,7 @@ test("goodsController getById returns patient-safe fields only", () => {
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.id, "g-1003");
   assert.equal(result.body.brand, "Sobhan");
-  assert.equal(result.body.sources[0].key, "qanoon");
+  assert.equal(result.body.sources[0].key, "internal");
   assert.equal(result.body.sources[1].key, "ttac");
   assert.equal("internalCode" in result.body, false);
   assert.equal("barcode" in result.body, false);
@@ -266,7 +266,7 @@ test("pricingService returns patient-facing consumer pricing fields", () => {
   assert.equal(result.consumerTotalPrice, 256000);
   assert.equal(result.finalConsumerPrice, 304200);
   assert.equal(result.packEstimatedPrice, 304200);
-  assert.equal(result.sourceHints[0].key, "qanoon");
+  assert.equal(result.sourceHints[0].key, "internal");
   assert.equal(result.sourceHints[1].key, "ttac");
   assert.equal("telegram" in result, false);
 });
