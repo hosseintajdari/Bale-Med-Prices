@@ -15,3 +15,6 @@ output/
 local-inputs/
 
 *.log
+
+# Harvested price catalogs are data, not code — never commit them.
+data/scrapers/*.sqlite3

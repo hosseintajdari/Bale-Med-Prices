@@ -11,4 +11,10 @@ services:
     environment:
       PORT: 4000
       API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:4000}
+      # Darukade price catalog (public prices, harvested on the host by the
+      # scraper cron). Mounted READ-ONLY: the API never writes the catalog,
+      # and no per-pharmacy data is ever mounted into this service.
+      DARUKADE_DB_PATH: /app/data/scrapers/darukade.sqlite3
+    volumes:
+      - ${DARUKADE_DATA_DIR:-./data/scrapers}:/app/data/scrapers:ro
     restart: unless-stopped
