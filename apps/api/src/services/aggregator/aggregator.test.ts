@@ -170,3 +170,68 @@ test("darukade adapter disables itself when the DB is missing", async () => {
   assert.equal(await adapter.health(), false);
   assert.deepEqual(await adapter.search("ضد آفتاب"), []);
 });
+
+test("darukade rowToHit drops garbage dates, keeps empty-brand fallback", () => {
+  const base = {
+    url: "https://darukade.com/products/x-1",
+    name: "کرم",
+    variant_title: null,
+    brand_fa: null,
+    brand_en: null,
+    price_toman: 1000,
+    fetched_at: "2026-10-15T06:14:50+00:00"
+  };
+  assert.equal(rowToHit({ ...base, fetched_at: "not-a-date" }), null);
+  const hit = rowToHit({ ...base, brand_fa: "  ", brand_en: "Erikeh" });
+  assert.ok(hit);
+  assert.ok(hit.productName.includes("Erikeh"));
+});
+
+test("darukade adapter finds Arabic-letter catalog rows from a Persian query", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "darukade-ar-"));
+  const path = join(dir, "darukade.sqlite3");
+  const db = new DatabaseSync(path);
+  db.exec(`CREATE TABLE darukade_products (
+    url TEXT NOT NULL, variant_idx INTEGER NOT NULL, name TEXT,
+    variant_title TEXT, brand_fa TEXT, brand_en TEXT, product_code TEXT,
+    price_toman INTEGER, original_price_toman INTEGER, discount_percent INTEGER,
+    in_stock INTEGER, store_count INTEGER, expiration TEXT,
+    fetched_at TEXT NOT NULL, PRIMARY KEY (url, variant_idx))`);
+  // Stored with Arabic ي/ك and the discriminating word only in variant_title.
+  db.prepare(
+    `INSERT INTO darukade_products (url, variant_idx, name, variant_title, brand_fa, price_toman, fetched_at)
+     VALUES ('https://darukade.com/p/9', 0, 'كرم مرطوب كننده', 'يوسرين', 'يوسرين', 800000, '2026-10-15T06:14:50+00:00')`
+  ).run();
+  db.close();
+  const adapter = new DarukadeAdapter(path);
+  try {
+    const hits = await adapter.search("یوسرین");
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].priceRial, 8000000);
+    // LIKE wildcards in the query must not broaden the pull into a match-all.
+    const wild = await adapter.search("%%");
+    assert.deepEqual(wild, []);
+  } finally {
+    adapter.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("darukade adapter picks up a catalog that appears after startup and reopens after close", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "darukade-life-"));
+  const path = join(dir, "darukade.sqlite3");
+  const adapter = new DarukadeAdapter(path);
+  try {
+    assert.equal(await adapter.health(), false); // not there yet
+    const { path: fixture } = makeFixtureDb();
+    const { copyFileSync } = await import("node:fs");
+    copyFileSync(fixture, path);
+    assert.equal(await adapter.health(), true); // appeared -> picked up
+    adapter.close();
+    const hits = await adapter.search("ضد آفتاب اریکه"); // close is not terminal
+    assert.equal(hits.length, 1);
+  } finally {
+    adapter.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
