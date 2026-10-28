@@ -6,11 +6,17 @@
  * parallel system. Read-only public access; RateLimitedError propagates
  * so callers stop and report instead of blind-retrying.
  */
-import { TorobAdapter } from "./torob-adapter.ts";
+import { DarukadeAdapter } from "./darukade-adapter.ts";
 import { DelgarmAdapter } from "./delgarm-adapter.ts";
 import { RateLimitedError, type PriceHit, type SourceAdapter } from "./types.ts";
 
-const adapters: SourceAdapter[] = [new TorobAdapter(), new DelgarmAdapter()];
+// Production adapter order (owner order 2026-10-26, wired on the server
+// first, ported into the repo on gorgg/production):
+// darukade = price backbone (local harvested catalog, trusted, dated);
+// delgarm = live fallback. Torob is OUT of the live array — its adapter
+// file stays on disk, shelved (owner verdict: drug prices aren't its
+// thing; its API also captcha-blocks the server IP).
+const adapters: SourceAdapter[] = [new DarukadeAdapter(), new DelgarmAdapter()];
 
 export const aggregatorService = {
   /** Registered adapter names, in priority order. */
