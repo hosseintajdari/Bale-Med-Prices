@@ -111,6 +111,12 @@ function fuzzyTokenMatch(token, candidate) {
     return true;
   }
 
+  // Levenshtein distance is at least the length difference, so candidates
+  // further than 1 char away can never fuzzy-match — skip the O(n*m) table.
+  if (Math.abs(token.length - candidate.length) > 1) {
+    return false;
+  }
+
   if (token.length < 5 || candidate.length < 5) {
     return DOSAGE_FORM_TOKENS.has(candidate) && levenshteinDistance(token, candidate) <= 1;
   }
@@ -191,6 +197,56 @@ function scoreGood(term, tokens, good, query) {
   return score;
 }
 
+/**
+ * Pre-normalized search fields per good. Normalizing ~16k catalogs' fields
+ * on every query cost 3-5s per search (QA 2026-10-30 profile) — it is
+ * identical for every query, so it is computed once at load. Matching
+ * semantics are unchanged: same fields, same normalization, same fuzz.
+ */
+interface SearchableGood {
+  good: Good;
+  /** Normalized whole-field candidates. */
+  fields: string[];
+  /** Pre-split token lists of each field. */
+  fieldTokens: string[][];
+}
+
+const searchableGoods: SearchableGood[] = goods.map((good) => {
+  const haystacks = [
+    good.id,
+    good.internalCode,
+    good.barcode,
+    good.genericCode,
+    good.title,
+    good.brand,
+    good.persianTitle,
+    good.englishTitle,
+    good.dosageForm,
+    good.routeQualifier,
+    good.strengthLabel,
+    good.patientFormLabel,
+    good.packageDescription,
+    good.activeStatus,
+    ...good.aliases
+  ].filter(Boolean);
+
+  const fields = haystacks.map((value) => normalizeSearchText(value));
+  return {
+    good,
+    fields,
+    fieldTokens: fields.map((field) => field.split(/\s+/))
+  };
+});
+
+function matchesToken(token, entry) {
+  return entry.fields.some(
+    (candidate, fieldIndex) =>
+      entry.fieldTokens[fieldIndex].some((candidateToken) =>
+        fuzzyTokenMatch(token, candidateToken)
+      ) || fuzzyTokenMatch(token, candidate)
+  );
+}
+
 export const goodsRepository = {
   search(input) {
     const query = input?.query ?? "";
@@ -201,36 +257,9 @@ export const goodsRepository = {
       return goods.slice(0, 20);
     }
 
-    return goods
-      .filter((good) => {
-        const haystacks = [
-          good.id,
-          good.internalCode,
-          good.barcode,
-          good.genericCode,
-          good.title,
-          good.brand,
-          good.persianTitle,
-          good.englishTitle,
-          good.dosageForm,
-          good.routeQualifier,
-          good.strengthLabel,
-          good.patientFormLabel,
-          good.packageDescription,
-          good.activeStatus,
-          ...good.aliases
-        ].filter(Boolean);
-
-        const searchableTerms = haystacks.map((value) => normalizeSearchText(value));
-        return tokens.every((token) =>
-          searchableTerms.some((candidate) =>
-            candidate
-              .split(/\s+/)
-              .some((candidateToken) => fuzzyTokenMatch(token, candidateToken)) ||
-            fuzzyTokenMatch(token, candidate)
-          )
-        );
-      })
+    return searchableGoods
+      .filter((entry) => tokens.every((token) => matchesToken(token, entry)))
+      .map((entry) => entry.good)
       .sort(
         (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
       );
