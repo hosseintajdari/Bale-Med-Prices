@@ -181,7 +181,7 @@ test("HTTP server handles telegram-formatted goods search", async () => {
   const data = await response.json();
   assert.equal(data.copyReady, true);
   assert.ok(typeof data.text === "string");
-  assert.match(data.text, /Search:/);
+  assert.match(data.text, /دارو پیدا شد/);
 });
 
 test("HTTP server performs price response caching with X-Cache headers and stats", async () => {

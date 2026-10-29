@@ -33,15 +33,24 @@ function buildTtacDetailPlaceholder(selection) {
   };
 }
 
+/** Today in Asia/Tehran as YYYY-MM-DD — the honest default document date. */
+function todayInTehran(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tehran" }).format(new Date());
+}
+
 function calculateResolved(selection, input) {
+  // No hardcoded stale default (review C2): a quote is priced on today's
+  // document date unless the caller explicitly asks for another date, and
+  // the date used is carried into the answer as its update line.
+  const documentDate = input.documentDate ?? todayInTehran();
   const pricing = pricingService.calculate({
     goodId: selection.goodId,
-    documentDate: input.documentDate ?? "2026-06-24",
+    documentDate,
     quantity: Number(input.quantity ?? 1),
     warehouseId: input.warehouseId ?? "main",
     includeTechnicalFee: Boolean(input.includeTechnicalFee)
   });
-  const presentation = botResponsePresenter.pricing(pricing);
+  const presentation = botResponsePresenter.pricing({ ...pricing, documentDate });
   selectionHistoryStore.recordSuccessfulSelection(selection.query, selection.goodId);
 
   return {
@@ -69,8 +78,8 @@ function toBotResponse(selection, input) {
     return {
       type: "not_found",
       query: selection.query,
-      text: `No medicine was found for: ${selection.query}`,
-      copyReady: true
+      text: `برای «${selection.query}» دارویی پیدا نشد.`,
+      copyReady: false
     };
   }
 
@@ -78,7 +87,7 @@ function toBotResponse(selection, input) {
     return {
       type: selection.type,
       text: selection.text,
-      copyReady: true
+      copyReady: false
     };
   }
 
@@ -87,7 +96,7 @@ function toBotResponse(selection, input) {
       type: "refine_search",
       query: selection.query,
       text: selection.text,
-      copyReady: true
+      copyReady: false
     };
   }
 

@@ -25,6 +25,7 @@ function toPatientPricingResponse(result) {
     packLabel: result.packLabel,
     quantity: result.quantity,
     consumerUnitPrice: result.unitBasePrice,
+    documentDate: result.documentDate,
     consumerTotalPrice: result.basePrice,
     finalConsumerPrice: result.finalPrice,
     packEstimatedPrice: result.quantity > 1 ? result.finalPrice : null,

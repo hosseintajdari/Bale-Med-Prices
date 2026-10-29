@@ -1,5 +1,9 @@
 import { goodsService } from "../services/goods-service.ts";
 import { RateLimitedError } from "../services/aggregator/types.ts";
+import {
+  formatPriceBlock,
+  toPersianDigits
+} from "../../../../packages/domain/src/format-price.ts";
 
 function parseSearchRequest(url) {
   const parsed = new URL(url ?? "", "http://localhost");
@@ -16,20 +20,27 @@ function parseSearchRequest(url) {
 
 function buildTelegramSearchText(items, query) {
   if (items.length === 0) {
-    return `No medicine was found for: ${query || "your search"}`;
+    return `برای «${query || "این جستجو"}» دارویی پیدا نشد.`;
   }
 
-  const lines = [`Search: ${query || "all medicines"}`, `Matches: ${items.length}`];
+  const lines = [`🔍 ${query || "همه‌ی داروها"}`, `${toPersianDigits(items.length)} دارو پیدا شد.`, ""];
 
-  for (const item of items.slice(0, 5)) {
-    const webTag = item.webSource ? ` [web: ${item.webSourceName}]` : "";
+  items.slice(0, 5).forEach((item, index) => {
+    if (index > 0) {
+      lines.push("", "— — —", "");
+    }
     lines.push(
-      `- ${item.title} | ${item.persianTitle} | ${item.unitLabel} | ${item.consumerUnitPrice}${webTag}`
+      formatPriceBlock({
+        productName: item.persianTitle || item.title,
+        priceRial: item.consumerUnitPrice,
+        sourceLabel: "",
+        crawledAt: item.crawledAt
+      })
     );
-  }
+  });
 
   if (items.length > 5) {
-    lines.push("More results are available. Narrow the search query.");
+    lines.push("", "نتیجه‌های بیشتری هم هست؛ جستجو را دقیق‌تر کنید.");
   }
 
   return lines.join("\n");

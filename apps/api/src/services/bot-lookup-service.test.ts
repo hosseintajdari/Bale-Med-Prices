@@ -40,7 +40,8 @@ test("botLookupService returns resolved telegram text for a single match", () =>
   assert.equal(result.type, "resolved");
   assert.equal(result.goodId, "g-1003");
   assert.equal(result.copyReady, true);
-  assert.match(result.text, /Losartan 50mg Tablet/);
+  assert.match(result.text, /لوزارتان/);
+  assert.match(result.text, /به‌روزرسانی:/);
 });
 
 test("botLookupService asks for form selection when several forms match", () => {
@@ -53,7 +54,7 @@ test("botLookupService asks for form selection when several forms match", () => 
   });
 
   assert.equal(result.type, "needs_form_selection");
-  assert.equal(result.copyReady, true);
+  assert.equal(result.copyReady, false);
   assert.match(result.text, /شکل دارو را انتخاب کنید/);
   assert.ok(result.items.length > 1);
   assert.equal(result.selection.kind, "single_choice");
@@ -192,7 +193,8 @@ test("botLookupService resolves a selected strength to unit price", () => {
   assert.equal(result.type, "resolved");
   assert.equal(result.goodId, "g-1006");
   assert.equal(result.copyReady, true);
-  assert.match(result.text, /Acetaminophen 500mg Tablet/);
+  assert.match(result.text, /استامینوفن/);
+  assert.match(result.text, /به‌روزرسانی:/);
   assert.deepEqual(result.moreInfo, {
     ttacDetail: {
       sourceKey: "ttac",
@@ -691,7 +693,7 @@ test("botLookupService returns not_found for missing match", () => {
   });
 
   assert.equal(result.type, "not_found");
-  assert.match(result.text, /No medicine was found/);
+  assert.match(result.text, /دارویی پیدا نشد/);
 });
 
 test("botLookupService returns web-friendly selection payload without telegram fields", () => {

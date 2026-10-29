@@ -1,3 +1,9 @@
+import {
+  formatPriceFa,
+  formatUpdateLine,
+  toPersianDigits
+} from "../../../../packages/domain/src/format-price.ts";
+
 function formatCurrency(value) {
   if (value == null) {
     return "نامشخص";
@@ -20,15 +26,23 @@ function patientUnitLabel(unitLabel) {
 }
 
 function buildPricingText(result) {
+  // Doctor-grade contract, same as the bot price blocks (review C2):
+  // one name, one primary price (rial + toman parens), the UPDATE DATE
+  // instead of the intermediary's name (prices are updated in TTAC).
+  // The unexplained second «قیمت نهایی», «تعداد: ۱» and pack noise of the
+  // internal workbench do not belong in a patient/bot answer; a total is
+  // shown only when a quantity > 1 was actually requested.
   const lines = [
-    `💊 ${result.title}`,
-    result.persianTitle,
-    `قیمت هر ${patientUnitLabel(result.unitLabel)}: ${formatCurrency(result.consumerUnitPrice)} ریال`,
-    `قیمت نهایی: ${formatCurrency(result.finalConsumerPrice)} ریال`,
-    `تعداد: ${formatCurrency(result.quantity)}`,
-    `بسته‌بندی: ${result.packLabel}`,
-    `منبع قیمت: ${result.sourceHints.map((source) => source.label).join("، ")}`
+    result.persianTitle || result.title,
+    `قیمت هر ${patientUnitLabel(result.unitLabel)}: ${formatPriceFa(result.consumerUnitPrice)}`
   ];
+
+  const quantity = Number(result.quantity ?? 1);
+  if (Number.isFinite(quantity) && quantity > 1) {
+    lines.push(`تعداد: ${toPersianDigits(quantity)} — جمع: ${formatPriceFa(result.finalConsumerPrice)}`);
+  }
+
+  lines.push(formatUpdateLine(result.documentDate));
 
   if (result.warnings.length > 0) {
     lines.push(`هشدار: ${result.warnings.join(" | ")}`);
@@ -42,15 +56,19 @@ function buildChoiceLine(choice) {
 }
 
 function buildSelectionText(query, selection) {
+  // Persian, like every other user-facing text (review C3) — the API must
+  // not speak English to this product's users, and nobody replies "with
+  // an id": they tap a button or type a name.
+  const count = selection.items?.length ?? selection.choices.length;
   const lines = [
-    `Search: ${query}`,
-    `I found ${selection.items?.length ?? selection.choices.length} matching medicines.`,
-    selection.prompt ?? "Reply with one id from the list below:",
+    `🔍 ${query}`,
+    `${toPersianDigits(count)} دارو پیدا شد.`,
+    selection.prompt ?? "یکی را انتخاب کنید:",
     ...selection.choices.map(buildChoiceLine)
   ];
 
   if (selection.items?.length > 5) {
-    lines.push("More matches exist. Narrow the search query.");
+    lines.push("نتیجه‌های بیشتری هم هست؛ جستجو را دقیق‌تر کنید.");
   }
 
   return lines.join("\n");
@@ -108,7 +126,7 @@ export const botResponsePresenter = {
       total: selection.total ?? selection.items?.length ?? choices.length,
       sessionId: selection.sessionId,
       text: buildSelectionText(selection.query, selection),
-      copyReady: true,
+      copyReady: false,
       items: (selection.items ?? []).slice(0, 5).map((item) => ({
         id: item.id,
         title: item.title,

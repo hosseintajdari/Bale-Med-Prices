@@ -212,8 +212,8 @@ test("goodsController can return telegram-friendly search payload", async () => 
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.copyReady, true);
   assert.equal(result.body.total, 1);
-  assert.match(result.body.text, /Search: vit/);
-  assert.match(result.body.text, /Vitamin D3 1000 IU/);
+  assert.match(result.body.text, /دارو پیدا شد/);
+  assert.match(result.body.text, /ویتامین د/);
   assert.equal(result.body.items[0].id, "g-1005");
 });
 
@@ -284,8 +284,9 @@ test("pricingController can return telegram-friendly compact payload", async () 
   assert.equal(result.body.goodId, "g-1003");
   assert.equal(result.body.copyReady, true);
   assert.equal(result.body.parseMode, "plain_text");
-  assert.match(result.body.text, /Losartan 50mg Tablet/);
+  assert.match(result.body.text, /لوزارتان/);
   assert.match(result.body.text, /قیمت هر قرص:/);
+  assert.match(result.body.text, /به‌روزرسانی:/);
 });
 
 test("goodsService search applies learned selection history to ranking", () => {
