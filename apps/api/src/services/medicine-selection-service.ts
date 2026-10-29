@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { goodsService } from "./goods-service.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
 import { selectionSessionStore } from "./selection-session-store.ts";
@@ -65,7 +66,15 @@ function patientFormKeyFor(item) {
 }
 
 function strengthKeyFor(item) {
-  return item.strengthLabel ?? "";
+  const raw = (item.strengthLabel ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (Buffer.byteLength(raw, "utf8") <= 30) {
+    return raw;
+  }
+  const hash = crypto.createHash("sha256").update(raw).digest("hex").slice(0, 10);
+  return `h:${hash}`;
 }
 
 function optionLabelFor(item) {
@@ -311,10 +320,12 @@ export const medicineSelectionService = {
     const choiceId = input.choiceId;
 
     if (choiceId === "unknown") {
+      selectionSessionStore.close(input.sessionId);
       return createIdentitySelection(query, items);
     }
 
     if (choiceId === "refine") {
+      selectionSessionStore.close(input.sessionId);
       return {
         type: "refine_search",
         query,
@@ -338,7 +349,9 @@ export const medicineSelectionService = {
       return finalizeSelectionIfResolved(
         resolveNextStep(
           query,
-          items.filter((item) => strengthKeyFor(item) === strength)
+          items.filter(
+            (item) => strengthKeyFor(item) === strength || (item.strengthLabel ?? "").trim() === strength
+          )
         ),
         input.sessionId
       );

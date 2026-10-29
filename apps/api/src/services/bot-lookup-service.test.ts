@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { botController } from "../controllers/bot-controller.ts";
 import { botLookupService } from "./bot-lookup-service.ts";
+import { botResponsePresenter } from "./bot-response-presenter.ts";
+import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
 import { selectionSessionStore } from "./selection-session-store.ts";
 
@@ -728,4 +730,194 @@ test("botLookupService returns structured patient pricing for web resolved looku
   assert.match(result.pricing.unitPriceLabel, /قیمت هر قرص/);
   assert.equal("text" in result, false);
   assert.ok(result.sourceHints.length > 0);
+});
+
+test("botResponsePresenter pricing text includes Rial and Toman and filters falsy lines (issue #61)", () => {
+  const resultWithoutPersian = botResponsePresenter.pricing({
+    goodId: "g-test-1",
+    title: "Test Medicine 100mg",
+    persianTitle: undefined,
+    unitLabel: "tablet",
+    consumerUnitPrice: 250000,
+    finalConsumerPrice: 250000,
+    quantity: 1,
+    packLabel: "جعبه ۳۰ عددی",
+    sourceHints: [{ label: "کاتالوگ" }],
+    warnings: []
+  });
+
+  assert.equal(resultWithoutPersian.copyReady, true);
+  assert.doesNotMatch(resultWithoutPersian.text, /undefined/);
+  assert.match(resultWithoutPersian.text, /قیمت هر قرص: ۲۵۰٬۰۰۰ ریال \(۲۵٬۰۰۰ تومان\)/);
+  assert.match(resultWithoutPersian.text, /قیمت نهایی: ۲۵۰٬۰۰۰ ریال \(۲۵٬۰۰۰ تومان\)/);
+
+  const resultWithPersian = botResponsePresenter.pricing({
+    goodId: "g-test-2",
+    title: "Test Medicine 100mg",
+    persianTitle: "تست مدیسین ۱۰۰ میلی‌گرم",
+    unitLabel: "capsule",
+    consumerUnitPrice: 100000,
+    finalConsumerPrice: 100000,
+    quantity: 1,
+    packLabel: "جعبه",
+    sourceHints: [],
+    warnings: ["هشدار تست"]
+  });
+
+  assert.match(resultWithPersian.text, /تست مدیسین ۱۰۰ میلی‌گرم/);
+  assert.match(resultWithPersian.text, /قیمت هر کپسول: ۱۰۰٬۰۰۰ ریال \(۱۰٬۰۰۰ تومان\)/);
+  assert.match(resultWithPersian.text, /هشدار: هشدار تست/);
+  assert.doesNotMatch(resultWithPersian.text, /undefined/);
+});
+
+test("botLookupService resolved lookup includes Rial and Toman in parentheses without undefined line (issue #61)", () => {
+  const result = botLookupService.lookup({
+    query: "لوزارتان",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(result.type, "resolved");
+  assert.doesNotMatch(result.text, /undefined/);
+  assert.match(result.text, /ریال \(.* تومان\)/);
+  assert.match(result.text, /قیمت هر قرص: ۹۶٬۰۰۰ ریال \(۹٬۶۰۰ تومان\)/);
+});
+
+test("medicineSelectionService guards 64-byte Telegram callback_data limit for long strength labels (issue #61)", () => {
+  const longStrengthItem1 = {
+    id: "g-long-1",
+    title: "Long Medicine 1",
+    dosageForm: "tablet",
+    patientFormLabel: "قرص",
+    strengthLabel: "۵۰۰ میلی‌گرم آهسته‌رهش طولانی‌اثر شرکت داروسازی",
+    sellPrice: 100000
+  };
+  const longStrengthItem2 = {
+    id: "g-long-2",
+    title: "Long Medicine 2",
+    dosageForm: "tablet",
+    patientFormLabel: "قرص",
+    strengthLabel: "۲۵۰ میلی‌گرم آهسته‌رهش معمولی شرکت داروسازی",
+    sellPrice: 50000
+  };
+
+  const selectionResult = medicineSelectionService.continue({
+    sessionId: selectionSessionStore.create({
+      query: "داروی طولانی",
+      items: [longStrengthItem1, longStrengthItem2]
+    }),
+    choiceId: "form:tablet"
+  });
+
+  assert.equal(selectionResult.type, "needs_strength_selection");
+  const presentation = botResponsePresenter.selection(selectionResult);
+
+  // Every telegram button's callback_data must strictly be <= 64 bytes
+  for (const row of presentation.telegram.replyMarkup.inline_keyboard) {
+    for (const btn of row) {
+      const byteLen = Buffer.byteLength(btn.callback_data, "utf8");
+      assert.ok(
+        byteLen <= 64,
+        `callback_data exceeds 64 bytes (${byteLen} bytes): "${btn.callback_data}"`
+      );
+    }
+  }
+
+  // The long strength choice id must be hashed
+  const hashedChoice = selectionResult.choices.find(
+    (c) => c.label === "۵۰۰ میلی‌گرم آهسته‌رهش طولانی‌اثر شرکت داروسازی"
+  );
+  assert.ok(hashedChoice, "hashedChoice should exist");
+  assert.match(hashedChoice.id, /^strength:h:[a-f0-9]{10}$/);
+
+  // Continuing with the hashed choice successfully resolves
+  const resolved = medicineSelectionService.continue({
+    sessionId: selectionResult.sessionId,
+    choiceId: hashedChoice.id
+  });
+  assert.equal(resolved.type, "resolved");
+  assert.equal(resolved.goodId, "g-long-1");
+});
+
+test("botResponsePresenter buildTelegramButton rejects callback_data exceeding 64 bytes (issue #61)", () => {
+  assert.throws(
+    () => {
+      botResponsePresenter.selection({
+        type: "needs_identity_selection",
+        query: "test",
+        sessionId: "sel-very-long-session-id-123456789",
+        prompt: "select",
+        choices: [
+          {
+            id: "good:this-choice-id-is-far-too-long-and-will-definitely-exceed-sixty-four-bytes-limit",
+            label: "test"
+          }
+        ]
+      });
+    },
+    /Telegram callback_data exceeds 64-byte limit/
+  );
+});
+
+test("medicineSelectionService closes session on refine branch (issue #37)", () => {
+  const firstStep = botLookupService.lookup({
+    query: "ایبوپروفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(firstStep.type, "needs_form_selection");
+  const refineChoice = firstStep.selection.choices.find(
+    (choice) => choice.label === "جستجوی دقیق‌تر"
+  );
+  assert.ok(refineChoice);
+
+  assert.ok(selectionSessionStore.get(firstStep.sessionId));
+
+  const refined = medicineSelectionService.continue({
+    sessionId: firstStep.sessionId,
+    choiceId: refineChoice.id
+  });
+
+  assert.equal(refined.type, "refine_search");
+  assert.equal(selectionSessionStore.get(firstStep.sessionId), null);
+
+  const reused = medicineSelectionService.continue({
+    sessionId: firstStep.sessionId,
+    choiceId: refineChoice.id
+  });
+  assert.equal(reused.type, "expired_selection");
+});
+
+test("medicineSelectionService closes previous session on unknown branch (issue #37)", () => {
+  const firstStep = botLookupService.lookup({
+    query: "ایبوپروفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+
+  assert.equal(firstStep.type, "needs_form_selection");
+  const unknownChoice = firstStep.selection.choices.find(
+    (choice) => choice.label === "مطمئن نیستم"
+  );
+  assert.ok(unknownChoice);
+
+  const previousSessionId = firstStep.sessionId;
+  assert.ok(selectionSessionStore.get(previousSessionId));
+
+  const identityStep = medicineSelectionService.continue({
+    sessionId: previousSessionId,
+    choiceId: unknownChoice.id
+  });
+
+  assert.equal(identityStep.type, "needs_identity_selection");
+  assert.notEqual(identityStep.sessionId, previousSessionId);
+  assert.equal(selectionSessionStore.get(previousSessionId), null);
+  assert.ok(selectionSessionStore.get(identityStep.sessionId));
 });

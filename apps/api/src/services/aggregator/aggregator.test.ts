@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { politeFetch, resetPolitenessForTest } from "./http.ts";
 import { buildQueries, extractUrls } from "./google-discovery.ts";
 import { hitFromApiItem } from "./torob-adapter.ts";
+import { hitFromRow } from "./darukade-adapter.ts";
 import { parseRows, matchScore } from "./delgarm-adapter.ts";
 import { aggregatorService } from "./aggregator-service.ts";
 import { tomanToRial, RateLimitedError } from "./types.ts";
@@ -84,5 +85,31 @@ test("aggregatorService.searchWeb rejects too-short queries without network", as
 });
 
 test("aggregatorService exposes the registered adapter names", () => {
-  assert.deepEqual(aggregatorService.adapterNames, ["torob", "delgarm"]);
+  assert.deepEqual(aggregatorService.adapterNames, ["darukade", "delgarm"]);
+});
+
+test("darukade hitFromRow maps toman->rial and stamps the real crawl time", () => {
+  const hit = hitFromRow({
+    name: "کرم ضد آفتاب SPF50",
+    variant_title: "بژ روشن",
+    url: "https://darukade.com/products/x",
+    price_toman: 1299800,
+    fetched_at: "2026-10-26T01:51:05+00:00"
+  });
+  assert.ok(hit);
+  assert.equal(hit.priceRial, 12998000);
+  assert.equal(hit.sourceName, "darukade");
+  assert.equal(hit.crawledAt, "2026-10-26T01:51:05+00:00");
+  assert.ok(hit.productName.includes("بژ روشن"));
+});
+
+test("darukade hitFromRow drops rows without a price or crawl time", () => {
+  assert.equal(
+    hitFromRow({ name: "x", variant_title: null, url: "u", price_toman: 0, fetched_at: "t" }),
+    null
+  );
+  assert.equal(
+    hitFromRow({ name: "x", variant_title: null, url: "u", price_toman: 100, fetched_at: "" }),
+    null
+  );
 });

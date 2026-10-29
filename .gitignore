@@ -9,6 +9,7 @@ output/
 !.env.example
 !.env.telegram.example
 .env.telegram
+.secrets/
 
 .codex/
 .cursor/tmp/

@@ -4,11 +4,15 @@ services:
     ports:
       - "${PORT:-4000}:4000"
     env_file:
-      - path: .env.telegram
+      - path: .secrets/telegram.env
         required: false
-      - path: .env.bale
+      - path: .secrets/bale.env
         required: false
     environment:
       PORT: 4000
       API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:4000}
+      DARUKADE_DB_PATH: /app/data/scrapers/darukade.sqlite3
+      QANUN_GOODS_PATH: /app/data/scrapers/qanun-goods.json
+    volumes:
+      - /home/admin/scrapers/data:/app/data/scrapers:ro
     restart: unless-stopped

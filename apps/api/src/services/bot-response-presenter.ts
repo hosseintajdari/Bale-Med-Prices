@@ -1,9 +1,23 @@
+import { formatPriceFa } from "../../../../packages/domain/src/format-price.ts";
+
 function formatCurrency(value) {
   if (value == null) {
     return "نامشخص";
   }
 
   return new Intl.NumberFormat("fa-IR").format(value);
+}
+
+function formatPrice(value) {
+  if (value == null) {
+    return "نامشخص";
+  }
+
+  try {
+    return formatPriceFa(Number(value));
+  } catch {
+    return `${formatCurrency(value)} ریال`;
+  }
 }
 
 function patientUnitLabel(unitLabel) {
@@ -21,20 +35,22 @@ function patientUnitLabel(unitLabel) {
 
 function buildPricingText(result) {
   const lines = [
-    `💊 ${result.title}`,
-    result.persianTitle,
-    `قیمت هر ${patientUnitLabel(result.unitLabel)}: ${formatCurrency(result.consumerUnitPrice)} ریال`,
-    `قیمت نهایی: ${formatCurrency(result.finalConsumerPrice)} ریال`,
-    `تعداد: ${formatCurrency(result.quantity)}`,
-    `بسته‌بندی: ${result.packLabel}`,
-    `منبع قیمت: ${result.sourceHints.map((source) => source.label).join("، ")}`
+    result.title ? `💊 ${result.title}` : null,
+    result.persianTitle || null,
+    `قیمت هر ${patientUnitLabel(result.unitLabel)}: ${formatPrice(result.consumerUnitPrice)}`,
+    `قیمت نهایی: ${formatPrice(result.finalConsumerPrice)}`,
+    result.quantity != null ? `تعداد: ${formatCurrency(result.quantity)}` : null,
+    result.packLabel ? `بسته‌بندی: ${result.packLabel}` : null,
+    result.sourceHints?.length > 0
+      ? `منبع قیمت: ${result.sourceHints.map((source) => source.label).join("، ")}`
+      : null
   ];
 
-  if (result.warnings.length > 0) {
+  if (result.warnings?.length > 0) {
     lines.push(`هشدار: ${result.warnings.join(" | ")}`);
   }
 
-  return lines.join("\n");
+  return lines.filter(Boolean).join("\n");
 }
 
 function buildChoiceLine(choice) {
@@ -67,9 +83,16 @@ function buildSelectionChoice(choice, sessionId) {
 }
 
 function buildTelegramButton(choice, sessionId) {
+  const callback_data = `ms:${sessionId}:${choice.id}`;
+  if (Buffer.byteLength(callback_data, "utf8") > 64) {
+    throw new Error(
+      `Telegram callback_data exceeds 64-byte limit (${Buffer.byteLength(callback_data, "utf8")} bytes): "${callback_data}"`
+    );
+  }
+
   return {
     text: choice.label,
-    callback_data: `ms:${sessionId}:${choice.id}`
+    callback_data
   };
 }
 

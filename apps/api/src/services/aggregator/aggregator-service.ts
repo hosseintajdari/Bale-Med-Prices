@@ -6,11 +6,11 @@
  * parallel system. Read-only public access; RateLimitedError propagates
  * so callers stop and report instead of blind-retrying.
  */
-import { TorobAdapter } from "./torob-adapter.ts";
+import { DarukadeAdapter } from "./darukade-adapter.ts";
 import { DelgarmAdapter } from "./delgarm-adapter.ts";
 import { RateLimitedError, type PriceHit, type SourceAdapter } from "./types.ts";
 
-const adapters: SourceAdapter[] = [new TorobAdapter(), new DelgarmAdapter()];
+const adapters: SourceAdapter[] = [new DarukadeAdapter(), new DelgarmAdapter()];
 
 export const aggregatorService = {
   /** Registered adapter names, in priority order. */
