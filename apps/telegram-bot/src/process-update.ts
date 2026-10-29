@@ -1,7 +1,7 @@
 /**
  * Telegram update routing — twin of apps/bale-bot/src/process-update.ts.
  *
- * - callback_query "copy:<index>" → price in a Markdown code span (one-tap copy)
+ * - callback_query "pg:<page>" → turn the result page (edit in place)
  * - callback_query "ms:<sessionId>:<choiceId>" → selection ladder step
  *   (GET /bot/select → next menu or resolved price)
  * - /start, /help → fixed replies; any other command → unknown-command reply
@@ -9,18 +9,19 @@
  *   climb the no-LLM disambiguation ladder (GET /bot/lookup → selection
  *   menu → canonical retry)
  *
- * Last search results are kept per chat in memory so the copy buttons can
- * resolve. Single-instance assumption; a restart clears pending copy targets.
+ * Last search results are kept per chat in memory so the page buttons can
+ * re-render. Single-instance assumption; a restart clears pending pages.
  */
 import {
   answerCallbackQuery,
-  buildCopyMessage,
   buildHelpReply,
   buildPriceReply,
   buildStartReply,
   extractCommand,
   fetchPriceSearch,
-  parseCopyCallback,
+  editMessageText,
+  isPageCallback,
+  parsePageCallback,
   RateLimitedError,
   sendMessage,
   type PriceItem
@@ -43,20 +44,20 @@ interface BotConfig {
   apiBaseUrl: string;
 }
 
-const lastResults = new Map<string, PriceItem[]>();
+const lastResults = new Map<string, { items: PriceItem[]; query: string }>();
 const MAX_SESSIONS = 500;
 
-export function rememberResults(chatId: string, items: PriceItem[]): void {
+export function rememberResults(chatId: string, items: PriceItem[], query = ""): void {
   if (lastResults.size >= MAX_SESSIONS) {
     const oldest = lastResults.keys().next().value;
     if (oldest !== undefined) {
       lastResults.delete(oldest);
     }
   }
-  lastResults.set(chatId, items);
+  lastResults.set(chatId, { items, query });
 }
 
-export function recallResults(chatId: string): PriceItem[] | undefined {
+export function recallResults(chatId: string): { items: PriceItem[]; query: string } | undefined {
   return lastResults.get(chatId);
 }
 
@@ -64,18 +65,32 @@ export function clearSessionsForTest(): void {
   lastResults.clear();
 }
 
-async function processCopyCallback(config: BotConfig, chatId: string, callbackQueryId: string, data: string) {
-  const index = parseCopyCallback(data);
-  const items = recallResults(chatId);
-  const item = index !== null ? items?.[index] : undefined;
-
-  if (!item) {
-    await answerCallbackQuery(config.token, callbackQueryId, "نتیجه‌ای پیدا نشد؛ دوباره جستجو کنید.");
+async function processPageCallback(
+  config: BotConfig,
+  chatId: string,
+  messageId: string | number | undefined,
+  callbackQueryId: string,
+  data: string
+) {
+  const page = parsePageCallback(data);
+  const search = recallResults(chatId);
+  await answerCallbackQuery(config.token, callbackQueryId);
+  if (page === null || !search) {
+    await sendMessage(config.token, chatId, {
+      text: "این جستجو قدیمی شده؛ نام دارو را دوباره بفرستید."
+    });
     return;
   }
-
-  await answerCallbackQuery(config.token, callbackQueryId);
-  await sendMessage(config.token, chatId, buildCopyMessage(item));
+  const message = buildPriceReply(search.items, search.query, undefined, page);
+  if (messageId !== undefined) {
+    try {
+      await editMessageText(config.token, chatId, messageId, message);
+      return;
+    } catch {
+      // message too old to edit — fall through and send a fresh one
+    }
+  }
+  await sendMessage(config.token, chatId, message);
 }
 
 /**
@@ -109,7 +124,7 @@ async function runAggregatorPriceFlow(
     return false;
   }
 
-  rememberResults(String(chatId), items);
+  rememberResults(String(chatId), items, displayQuery);
   await sendMessage(config.token, chatId, buildPriceReply(items, displayQuery, note));
   return true;
 }
@@ -229,8 +244,10 @@ export async function processTelegramUpdate(config: BotConfig, update: any) {
     }
     if (isSelectionCallback(cq.data)) {
       await processSelectionCallback(config, String(chatId), cq.id, cq.data);
+    } else if (isPageCallback(cq.data)) {
+      await processPageCallback(config, String(chatId), cq.message?.message_id, cq.id, cq.data);
     } else {
-      await processCopyCallback(config, String(chatId), cq.id, cq.data);
+      await answerCallbackQuery(config.token, cq.id, "این دکمه قدیمی شده؛ دوباره جستجو کنید.");
     }
     return;
   }

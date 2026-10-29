@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildCopyMessage,
+  isPageCallback,
+  parsePageCallback,
   buildHelpReply,
   buildPriceReply,
   buildStartReply,
   extractCommand,
-  parseCopyCallback,
   readTelegramBotConfig
 } from "./telegram-bot-lib.ts";
 import {
@@ -53,51 +53,64 @@ const sampleItems = [
   }
 ];
 
-test("buildPriceReply renders دکترپسند blocks with a copy button each", () => {
+test("buildPriceReply renders دکترپسند blocks with an update-date line", () => {
   const message = buildPriceReply(sampleItems, "آموکسی");
   assert.ok(message.text.includes("۴۵۰٬۰۰۰ ریال (۴۵٬۰۰۰ تومان)"));
-  assert.ok(message.text.includes("منبع: torob"));
-  assert.ok(!/[0-9]/.test(message.text.replace(/copy:\d/g, "")), "no Latin digits leak into the reply");
-
-  const keyboard = message.reply_markup?.inline_keyboard ?? [];
-  assert.equal(keyboard.length, 2);
-  assert.equal(keyboard[0][0].text, `📋 کپی ${toPersianDigits(1)}`);
-  assert.equal(keyboard[0][0].callback_data, "copy:0");
-  assert.equal(keyboard[1][0].callback_data, "copy:1");
+  assert.ok(message.text.includes("به‌روزرسانی:"));
+  assert.ok(!message.text.includes("منبع:"), "source name no longer printed — update date replaced it");
+  assert.ok(!/[0-9]/.test(message.text), "no Latin digits leak into the reply");
+  // Two results fit one page: no pagination keyboard.
+  assert.equal(message.reply_markup, undefined);
 });
 
-test("buildPriceReply caps at five results", () => {
-  const many = Array.from({ length: 8 }, (_, i) => ({
+test("buildPriceReply drops priceless items instead of rendering ۰ ریال", () => {
+  const message = buildPriceReply(
+    [{ persianTitle: "بی‌قیمت", consumerUnitPrice: 0 }, { persianTitle: "بی‌قیمت ۲" }],
+    "بی‌قیمت"
+  );
+  assert.ok(!message.text.includes("۰ ریال"));
+  assert.ok(message.text.includes("قیمت معتبر پیدا نشد"));
+});
+
+test("buildPriceReply paginates with صفحه‌ی بعد / صفحه‌ی قبل buttons", () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({
     persianTitle: `دارو ${i}`,
     consumerUnitPrice: 10000,
     webSourceName: "x"
   }));
-  const message = buildPriceReply(many, "دارو");
-  assert.equal(message.reply_markup?.inline_keyboard.length, 5);
-  assert.ok(message.text.includes(toPersianDigits(3))); // «۳ نتیجه‌ی دیگر»
+  const page0 = buildPriceReply(many, "دارو");
+  assert.ok(page0.text.includes("صفحه‌ی ۱ از ۳"));
+  const kb0 = page0.reply_markup?.inline_keyboard ?? [];
+  assert.equal(kb0.length, 1);
+  assert.equal(kb0[0].length, 1);
+  assert.equal(kb0[0][0].callback_data, "pg:1");
+  assert.ok(kb0[0][0].text.includes("صفحه‌ی بعد"));
+
+  const page1 = buildPriceReply(many, "دارو", undefined, 1);
+  const kb1 = page1.reply_markup?.inline_keyboard ?? [];
+  assert.equal(kb1[0].length, 2);
+  assert.equal(kb1[0][0].callback_data, "pg:0");
+  assert.equal(kb1[0][1].callback_data, "pg:2");
+
+  const page2 = buildPriceReply(many, "دارو", undefined, 2);
+  assert.ok(page2.text.includes("دارو 10") || page2.text.includes("دارو 11"));
 });
 
-test("buildCopyMessage puts only the price in a Markdown code span", () => {
-  const message = buildCopyMessage(sampleItems[0]);
-  assert.equal(message.parse_mode, "Markdown");
-  const expected = `\`${formatPriceFa(450000)}\``;
-  assert.ok(message.text.includes(expected));
-  assert.ok(message.text.startsWith("آموکسی‌سیلین ۵۰۰"));
+test("parsePageCallback parses pg:<n> and rejects junk", () => {
+  assert.equal(parsePageCallback("pg:0"), 0);
+  assert.equal(parsePageCallback("pg:3"), 3);
+  assert.equal(parsePageCallback("pg:-1"), null);
+  assert.equal(parsePageCallback("copy:1"), null);
+  assert.equal(parsePageCallback(null), null);
+  assert.equal(isPageCallback("pg:2"), true);
+  assert.equal(isPageCallback("copy:2"), false);
 });
 
-test("parseCopyCallback parses copy:<index> and rejects junk", () => {
-  assert.equal(parseCopyCallback("copy:0"), 0);
-  assert.equal(parseCopyCallback("copy:3"), 3);
-  assert.equal(parseCopyCallback("copy:-1"), null);
-  assert.equal(parseCopyCallback("copy:x"), null);
-  assert.equal(parseCopyCallback("hello"), null);
-  assert.equal(parseCopyCallback(null), null);
-});
 
 test("start/help replies are Persian and command-only", () => {
   assert.ok(buildStartReply().text.includes("نام دارو را همین‌جا بفرستید"));
   const help = buildHelpReply().text;
   assert.ok(help.includes("/start"));
   assert.ok(help.includes("/help"));
-  assert.ok(help.includes("📋 کپی"));
+  assert.ok(help.includes("صفحه‌ی بعد"));
 });

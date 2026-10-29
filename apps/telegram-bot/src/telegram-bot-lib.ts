@@ -12,11 +12,13 @@
 import {
   formatPriceBlock,
   formatPriceFa,
+  formatUpdateLine,
+  isStalePrice,
+  sourceLabelFa,
   toPersianDigits
 } from "../../../packages/domain/src/format-price.ts";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
-const MAX_RESULTS = 5;
 
 export class RateLimitedError extends Error {
   constructor(message = "price source is rate-limiting us") {
@@ -31,6 +33,8 @@ export interface PriceItem {
   consumerUnitPrice?: number;
   webSource?: boolean;
   webSourceName?: string;
+  webSourceUrl?: string;
+  webInStock?: boolean;
   crawledAt?: string;
 }
 
@@ -55,7 +59,8 @@ export function buildStartReply(): TelegramMessage {
     text: [
       "به بات قیمت دارو خوش آمدید.",
       "",
-      "نام دارو را همین‌جا بفرستید — قیمت، منبع و تاریخش را می‌گیرید."
+      "نام دارو را همین‌جا بفرستید — قیمت، منبع و تاریخش را می‌گیرید.",
+      "مثلاً بنویسید: آموکسی‌سیلین ۵۰۰"
     ].join("\n")
   };
 }
@@ -65,7 +70,8 @@ export function buildHelpReply(): TelegramMessage {
     text: [
       "راهنما:",
       "• نام دارو را به فارسی یا انگلیسی بفرستید",
-      "• زیر هر قیمت دکمه‌ی «📋 کپی» هست — قیمت را با یک تپ کپی کنید",
+      "• اگر نتیجه زیاد بود، با دکمه‌های «صفحه‌ی بعد / صفحه‌ی قبل» ورق بزنید",
+      "• برای فرستادن قیمت برای بیمار، همان پیام را فوروارد کنید — منبع و تاریخ داخلش هست",
       "• /start — شروع دوباره",
       "• /help — همین راهنما"
     ].join("\n")
@@ -78,67 +84,133 @@ function itemTitle(item: PriceItem): string {
 
 function itemSourceLabel(item: PriceItem): string {
   if (item.webSource) {
-    return (item.webSourceName ?? "").trim() || "وب";
+    return sourceLabelFa(item.webSourceName) || "وب";
   }
   return "کاتالوگ";
 }
 
-/**
- * One search → one message: up to MAX_RESULTS doctor-friendly blocks,
- * each with its own «📋 کپی» inline button (callback_data "copy:<index>").
- */
-export function buildPriceReply(items: PriceItem[], query: string, note?: string): TelegramMessage {
-  const shown = items.slice(0, MAX_RESULTS);
-  const lines: string[] = [`🔍 ${query}`, ""];
-  const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+function stockLine(item: PriceItem): string | null {
+  if (!item.webSource || item.webInStock === undefined) {
+    return null;
+  }
+  return `موجودی آنلاین: ${item.webInStock ? "موجود" : "ناموجود"}`;
+}
 
-  shown.forEach((item, index) => {
-    if (index > 0) {
+export const PAGE_SIZE = 5;
+
+/**
+ * One search → one paged message (owner order 2026-10-29: prev/next page
+ * buttons replace the per-item copy buttons — the message itself is the
+ * forwardable artifact, source and date inside it).
+ *
+ * - Priceless items are dropped, never rendered as «۰ ریال».
+ * - Stale prices (≥ STALE_AFTER_DAYS) sink below fresh ones, stably.
+ * - Variants of one product (same source URL) render as one group:
+ *   name once, one short line per variant, source/age once.
+ * - Keyboard: a single row with «صفحه‌ی قبل» / «صفحه‌ی بعد» (pg:<n>).
+ */
+export function buildPriceReply(items: PriceItem[], query: string, note?: string, page = 0): TelegramMessage {
+  const valid = items.filter((item) => Number(item.consumerUnitPrice) > 0);
+  const sorted = valid
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => Number(isStalePrice(a.item.crawledAt)) - Number(isStalePrice(b.item.crawledAt)) || a.index - b.index)
+    .map(({ item }) => item);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const current = Math.min(Math.max(0, page), totalPages - 1);
+  const shown = sorted.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+
+  const lines: string[] = [`🔍 ${query}`];
+  if (totalPages > 1) {
+    lines.push(`صفحه‌ی ${toPersianDigits(current + 1)} از ${toPersianDigits(totalPages)}`);
+  }
+  lines.push("");
+
+  if (shown.length === 0) {
+    lines.push("برای این جستجو قیمت معتبر پیدا نشد.");
+  }
+
+  // Group consecutive variants that share a source URL.
+  const groups: PriceItem[][] = [];
+  for (const item of shown) {
+    const last = groups[groups.length - 1];
+    if (last && item.webSourceUrl && last[0].webSourceUrl === item.webSourceUrl) {
+      last.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+
+  groups.forEach((group, groupIndex) => {
+    if (groupIndex > 0) {
       lines.push("", "— — —", "");
     }
-    lines.push(
-      formatPriceBlock({
-        productName: itemTitle(item),
-        priceRial: item.consumerUnitPrice ?? 0,
-        sourceLabel: itemSourceLabel(item),
-        crawledAt: item.crawledAt
-      })
-    );
-    keyboard.push([
-      { text: `📋 کپی ${toPersianDigits(index + 1)}`, callback_data: `copy:${index}` }
-    ]);
+    const first = group[0];
+    if (group.length === 1) {
+      lines.push(
+        formatPriceBlock({
+          productName: itemTitle(first),
+          priceRial: first.consumerUnitPrice ?? 0,
+          sourceLabel: itemSourceLabel(first),
+          crawledAt: first.crawledAt
+        })
+      );
+    } else {
+      const titles = group.map(itemTitle);
+      const sep = " — ";
+      const prefix = titles[0].split(sep)[0];
+      const allShare = titles.every((t) => t === prefix || t.startsWith(prefix + sep));
+      lines.push(allShare ? prefix : itemTitle(first));
+      for (const item of group) {
+        const title = itemTitle(item);
+        const variant = allShare && title.includes(sep) ? title.slice(title.indexOf(sep) + sep.length) : title;
+        const out = item.webInStock === false ? " — ناموجود" : "";
+        lines.push(`• ${variant}: ${formatPriceFa(item.consumerUnitPrice ?? 0)}${out}`);
+      }
+      lines.push(formatUpdateLine(first.crawledAt));
+    }
+    // Group stock line only when the state is uniform; mixed groups mark
+    // the out-of-stock variants inline instead (see the loop above).
+    const uniformStock =
+      group.length === 1 || group.every((item) => item.webInStock === group[0].webInStock);
+    const stock = uniformStock ? stockLine(first) : null;
+    if (stock) {
+      lines.push(stock);
+    }
   });
-
-  if (items.length > MAX_RESULTS) {
-    lines.push("", `و ${toPersianDigits(items.length - MAX_RESULTS)} نتیجه‌ی دیگر — جستجو را دقیق‌تر کنید.`);
-  }
 
   if (note) {
     lines.push("", note);
   }
 
-  return { text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } };
-}
+  const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+  if (totalPages > 1) {
+    const row: Array<{ text: string; callback_data: string }> = [];
+    if (current > 0) {
+      row.push({ text: "صفحه‌ی قبل ▶", callback_data: `pg:${current - 1}` });
+    }
+    if (current < totalPages - 1) {
+      row.push({ text: "◀ صفحه‌ی بعد", callback_data: `pg:${current + 1}` });
+    }
+    keyboard.push(row);
+  }
 
-/**
- * The copy payload: product name as plain text, the price alone in a
- * Markdown code span — Telegram renders code spans natively, so one tap
- * on the code copies exactly the price.
- */
-export function buildCopyMessage(item: PriceItem): TelegramMessage {
-  const price = formatPriceFa(item.consumerUnitPrice ?? 0);
   return {
-    text: `${itemTitle(item)}\n\`${price}\``,
-    parse_mode: "Markdown"
+    text: lines.join("\n"),
+    reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined
   };
 }
 
-export function parseCopyCallback(data?: string | null): number | null {
-  if (!data?.startsWith("copy:")) {
+export function parsePageCallback(data?: string | null): number | null {
+  if (!data?.startsWith("pg:")) {
     return null;
   }
-  const index = Number(data.slice("copy:".length));
+  const index = Number(data.slice("pg:".length));
   return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+export function isPageCallback(data?: string | null): boolean {
+  return parsePageCallback(data) !== null;
 }
 
 export async function callTelegramApi(token: string, method: string, body: unknown): Promise<any> {
@@ -174,6 +246,28 @@ export async function sendMessage(token: string, chatId: string | number, messag
     body.reply_markup = message.reply_markup;
   }
   return callTelegramApi(token, "sendMessage", body);
+}
+
+
+/** Edit an already-sent message in place (used by page turns). */
+export async function editMessageText(
+  token: string,
+  chatId: string | number,
+  messageId: string | number,
+  message: TelegramMessage
+) {
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: message.text
+  };
+  if (message.parse_mode) {
+    body.parse_mode = message.parse_mode;
+  }
+  if (message.reply_markup) {
+    body.reply_markup = message.reply_markup;
+  }
+  return callTelegramApi(token, "editMessageText", body);
 }
 
 export async function answerCallbackQuery(token: string, callbackQueryId: string, text?: string) {
