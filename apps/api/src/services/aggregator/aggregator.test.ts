@@ -4,13 +4,34 @@ import { politeFetch, resetPolitenessForTest } from "./http.ts";
 import { buildQueries, extractUrls } from "./google-discovery.ts";
 import { hitFromApiItem } from "./torob-adapter.ts";
 import { parseRows, matchScore } from "./delgarm-adapter.ts";
-import { aggregatorService } from "./aggregator-service.ts";
+import { aggregatorService, resetWebCacheForTest, searchWithAdapters } from "./aggregator-service.ts";
 import { DarukadeAdapter, rowToHit } from "./darukade-adapter.ts";
-import { tomanToRial, RateLimitedError } from "./types.ts";
+import { tomanToRial, RateLimitedError, type PriceHit, type SourceAdapter } from "./types.ts";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+function fakeAdapter(
+  name: string,
+  behavior: () => Promise<PriceHit[]>
+): SourceAdapter {
+  return {
+    name,
+    search: behavior,
+    health: async () => true
+  };
+}
+
+function hit(name: string, sourceName: string): PriceHit {
+  return {
+    productName: name,
+    priceRial: 1000,
+    url: `https://example.com/${sourceName}/${encodeURIComponent(name)}`,
+    sourceName,
+    crawledAt: "2026-10-30T00:00:00Z"
+  };
+}
 
 test("tomanToRial normalizes toman to rial (x10)", () => {
   assert.equal(tomanToRial(100), 1000);
@@ -234,4 +255,142 @@ test("darukade adapter picks up a catalog that appears after startup and reopens
     adapter.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- Resilience contract (QA 2026-10-30) ---
+
+test("a rate-limited adapter does not kill another adapter's hits", async () => {
+  resetWebCacheForTest();
+  const healthy = fakeAdapter("healthy", async () => [hit("بوتاکس", "healthy")]);
+  const limited = fakeAdapter("limited", async () => {
+    throw new RateLimitedError("limited returned 429");
+  });
+
+  const { hits, meta } = await searchWithAdapters([healthy, limited], "بوتاکس", 5);
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].sourceName, "healthy");
+  const limitedOutcome = meta.sources.find((s) => s.name === "limited");
+  assert.equal(limitedOutcome?.status, "rate-limited");
+});
+
+test("a timing-out adapter cannot stall the response past its budget", async () => {
+  resetWebCacheForTest();
+  const original = process.env.WEB_ADAPTER_TIMEOUT_MS;
+  process.env.WEB_ADAPTER_TIMEOUT_MS = "200";
+  try {
+    const fast = fakeAdapter("fast", async () => [hit("استامینوفن", "fast")]);
+    const slow = fakeAdapter("slow", () => new Promise(() => {})); // never resolves
+
+    const t0 = Date.now();
+    const { hits, meta } = await searchWithAdapters([fast, slow], "استامینوفن", 5);
+    const elapsed = Date.now() - t0;
+
+    assert.equal(hits.length, 1);
+    assert.equal(meta.sources.find((s) => s.name === "slow")?.status, "error");
+    assert.ok(elapsed < 1000, `slow adapter must not stall the answer, took ${elapsed}ms`);
+  } finally {
+    if (original === undefined) {
+      delete process.env.WEB_ADAPTER_TIMEOUT_MS;
+    } else {
+      process.env.WEB_ADAPTER_TIMEOUT_MS = original;
+    }
+  }
+});
+
+test("adapters run in parallel, not serially", async () => {
+  resetWebCacheForTest();
+  const delay = () => new Promise((r) => setTimeout(r, 80));
+  const a = fakeAdapter("a", async () => {
+    await delay();
+    return [hit("x1", "a")];
+  });
+  const b = fakeAdapter("b", async () => {
+    await delay();
+    return [hit("x2", "b")];
+  });
+
+  const t0 = Date.now();
+  const { hits } = await searchWithAdapters([a, b], "x دارو", 5);
+  const elapsed = Date.now() - t0;
+
+  assert.equal(hits.length, 2);
+  assert.ok(elapsed < 200, `parallel fan-out expected ~80ms, took ${elapsed}ms`);
+});
+
+test("web results are cached for a short TTL and negatives too", async () => {
+  resetWebCacheForTest();
+  let calls = 0;
+  const counter = fakeAdapter("counter", async () => {
+    calls += 1;
+    return calls === 1 ? [hit("قرص آهن", "counter")] : [];
+  });
+
+  const first = await searchWithAdapters([counter], "قرص آهن", 5, 1_000);
+  assert.equal(first.hits.length, 1);
+  assert.equal(first.meta.cached, false);
+
+  // Within the positive TTL: served from cache, adapter not re-queried.
+  const second = await searchWithAdapters([counter], "قرص آهن", 5, 1_000 + 60_000);
+  assert.equal(calls, 1);
+  assert.equal(second.hits.length, 1);
+  assert.equal(second.meta.cached, true);
+
+  // Negative answers are cached with a shorter TTL: an empty result within
+  // the negative window is served from cache…
+  const miss = fakeAdapter("miss", async () => {
+    calls += 1;
+    return [];
+  });
+  await searchWithAdapters([miss], "پیتزا", 5, 2_000);
+  const cachedMiss = await searchWithAdapters([miss], "پیتزا", 5, 2_000 + 30_000);
+  assert.equal(cachedMiss.meta.cached, true);
+  // …but expires before the positive TTL would, so prices cannot go stale long.
+  const expiredMiss = await searchWithAdapters([miss], "پیتزا", 5, 2_000 + 61_000);
+  assert.equal(expiredMiss.meta.cached, false);
+});
+
+test("cache TTL is hard-capped so a misconfiguration cannot serve stale prices", async () => {
+  resetWebCacheForTest();
+  const original = process.env.WEB_CACHE_TTL_MS;
+  process.env.WEB_CACHE_TTL_MS = String(24 * 60 * 60 * 1000); // absurd: 24h
+  try {
+    let calls = 0;
+    const counter = fakeAdapter("counter", async () => {
+      calls += 1;
+      return [hit("قرص آهن", "counter")];
+    });
+
+    await searchWithAdapters([counter], "قرص آهن", 5, 0);
+    // 6 minutes later — past the 5-minute hard cap — the cache must be cold.
+    await searchWithAdapters([counter], "قرص آهن", 5, 6 * 60 * 1000);
+    assert.equal(calls, 2, "TTL must be capped at MAX_CACHE_TTL_MS (5 minutes)");
+  } finally {
+    if (original === undefined) {
+      delete process.env.WEB_CACHE_TTL_MS;
+    } else {
+      process.env.WEB_CACHE_TTL_MS = original;
+    }
+    resetWebCacheForTest();
+  }
+});
+
+test("web relevance threshold rejects unrelated queries before sources can return them", () => {
+  // QA 2026-10-30: پیتزا once reportedly returned total=2. Both adapters
+  // gate hits behind matchScore >= 0.55; lock that gate with pure scoring.
+  for (const title of ["کرم ضد آفتاب SPF50", "پک ضد آفتاب ویشی", "قرص استامینوفن ۳۲۵"]) {
+    const score = matchScore("پیتزا", title);
+    assert.ok(
+      score < 0.55,
+      `پیتزا must stay below the relevance threshold, got ${score} vs "${title}"`
+    );
+  }
+});
+
+test("aggregatorService.searchWeb never rejects on source failures", async () => {
+  // Short queries return without touching the network; the resilience
+  // guarantee for source errors is covered by the rate-limit/timeout tests
+  // above via searchWithAdapters (the same code path searchWeb delegates to).
+  const hits = await aggregatorService.searchWeb("x");
+  assert.deepEqual(hits, []);
 });

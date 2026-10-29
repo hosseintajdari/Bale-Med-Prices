@@ -74,7 +74,9 @@ function sendJson(response, statusCode, payload, extraHeaders) {
 export const goodsController = {
   /**
    * Local catalog first; empty local results fall back to the live web
-   * price aggregator. Rate-limited sources → 429 so callers back off.
+   * price aggregator. Source failures degrade (partial results / honest
+   * empty answer with `webMeta`), they never leak as 429 to our own bot
+   * users — the guard below stays as a defensive net only.
    */
   async search(request, response) {
     const input = parseSearchRequest(request.url);
