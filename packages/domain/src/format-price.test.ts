@@ -5,7 +5,10 @@ import {
   formatGroupedFa,
   formatPriceFa,
   priceAgeFa,
-  formatPriceBlock
+  formatPriceBlock,
+  formatJalaliDateFa,
+  formatUpdateLine,
+  sourceLabelFa
 } from "./format-price.ts";
 
 test("toPersianDigits converts Latin digits", () => {
@@ -60,6 +63,25 @@ test("formatPriceBlock composes the full block", () => {
   );
   assert.equal(
     block,
-    "آموکسی‌سیلین ۵۰۰\n۴۵۰٬۰۰۰ ریال (۴۵٬۰۰۰ تومان)\nمنبع: داروکده — قیمت ۳ روز پیش"
+    "آموکسی‌سیلین ۵۰۰\n۴۵۰٬۰۰۰ ریال (۴۵٬۰۰۰ تومان)\nبه‌روزرسانی: ۱۴ مهر ۱۴۰۵"
   );
+});
+
+test("formatJalaliDateFa converts and formatUpdateLine flags stale prices", () => {
+  assert.equal(formatJalaliDateFa("2026-10-06T08:00:00Z"), "۱۴ مهر ۱۴۰۵");
+  assert.equal(formatJalaliDateFa("2026-03-21T00:00:00Z"), "۱ فروردین ۱۴۰۵");
+  assert.equal(formatJalaliDateFa(undefined), null);
+  assert.equal(formatJalaliDateFa("not-a-date"), null);
+  const now = new Date("2026-10-29T00:00:00Z").getTime();
+  assert.equal(formatUpdateLine("2026-10-28T00:00:00Z", now), "به‌روزرسانی: ۶ آبان ۱۴۰۵");
+  assert.equal(formatUpdateLine("2026-10-06T00:00:00Z", now), "به‌روزرسانی: ۱۴ مهر ۱۴۰۵ — کهنه");
+  assert.equal(formatUpdateLine(undefined, now), "تاریخ به‌روزرسانی نامشخص");
+});
+
+test("sourceLabelFa maps adapter ids to the names pharmacists know", () => {
+  assert.equal(sourceLabelFa("darukade"), "داروکده");
+  assert.equal(sourceLabelFa("delgarm"), "دلگرم");
+  assert.equal(sourceLabelFa("torob"), "ترب");
+  assert.equal(sourceLabelFa("ttac"), "ttac");
+  assert.equal(sourceLabelFa(undefined), "");
 });

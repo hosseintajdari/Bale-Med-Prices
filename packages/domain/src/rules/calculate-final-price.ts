@@ -108,6 +108,7 @@ export function calculateFinalPrice(input) {
     unitLabel: input.good.unitLabel,
     packLabel: input.good.packLabel,
     sources: input.good.sources,
+    documentDate: input.documentDate,
     quantity: input.quantity,
     unitBasePrice,
     basePrice,
