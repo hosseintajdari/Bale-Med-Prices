@@ -33,6 +33,7 @@ export interface DarukadeRow {
   brand_fa: string | null;
   brand_en: string | null;
   price_toman: number | null;
+  in_stock?: number | null;
   fetched_at: string | null;
 }
 
@@ -55,7 +56,8 @@ export function rowToHit(row: DarukadeRow): PriceHit | null {
     priceRial: tomanToRial(priceToman),
     url: row.url,
     sourceName: "darukade",
-    crawledAt
+    crawledAt,
+    inStock: row.in_stock === null || row.in_stock === undefined ? undefined : Number(row.in_stock) > 0
   };
 }
 
@@ -151,7 +153,7 @@ export class DarukadeAdapter implements SourceAdapter {
     try {
       rows = db
         .prepare(
-          `SELECT url, variant_idx, name, variant_title, brand_fa, brand_en, price_toman, fetched_at
+          `SELECT url, variant_idx, name, variant_title, brand_fa, brand_en, price_toman, in_stock, fetched_at
            FROM darukade_products
            WHERE price_toman IS NOT NULL AND price_toman > 0
              AND fetched_at IS NOT NULL

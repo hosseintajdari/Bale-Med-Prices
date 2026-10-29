@@ -58,6 +58,7 @@ function toWebSearchItem(hit) {
     webSource: true,
     webSourceName: hit.sourceName,
     webSourceUrl: hit.url,
+    webInStock: hit.inStock,
     crawledAt: hit.crawledAt,
     sources: []
   };

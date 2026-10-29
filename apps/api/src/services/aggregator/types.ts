@@ -19,6 +19,8 @@ export interface PriceHit {
   sourceName: string;
   /** ISO timestamp of the crawl. Mandatory — no dateless prices. */
   crawledAt: string;
+  /** Source-side stock state when the source reports it (e.g. darukade). */
+  inStock?: boolean;
 }
 
 export class RateLimitedError extends Error {
