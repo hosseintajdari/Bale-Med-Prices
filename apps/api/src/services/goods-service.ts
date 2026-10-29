@@ -75,9 +75,11 @@ export const goodsService = {
 
   /**
    * Local catalog first; when it has nothing, fall back to the live web
-   * price aggregator (torob, delgarm). Same item shape, flagged as web.
-   * RateLimitedError propagates: the controller turns it into a 429 so
-   * callers stop and report instead of hammering the sources.
+   * price aggregator (darukade, delgarm). Same item shape, flagged as web.
+   * Source failures (rate-limit/timeout) never surface as errors here: the
+   * aggregator degrades to whatever healthy sources returned, and the
+   * per-source outcomes travel in `webMeta` for observability/degrade
+   * labels. A web-only miss therefore reads as an honest total=0, not a 429.
    */
   async searchWithWebFallback(input) {
     const local = this.search(input);
@@ -86,13 +88,14 @@ export const goodsService = {
     }
 
     const query = (input?.query ?? "").trim();
-    const hits = await aggregatorService.searchWeb(query);
+    const { hits, meta } = await aggregatorService.searchWebWithMeta(query);
     const items = hits.map(toWebSearchItem);
 
     return {
       items,
       total: items.length,
-      webFallback: true
+      webFallback: true,
+      webMeta: meta
     };
   },
 
