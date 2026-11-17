@@ -14,8 +14,16 @@ import {
   registerBaleWebhook
 } from "./bale-bot-lib.ts";
 
+/**
+ * Same fix as the Telegram twin (#46): the offset advances only after
+ * successful processing; a failing update is retried and dead-lettered after
+ * MAX_UPDATE_FAILURES attempts instead of being dropped silently.
+ */
+const MAX_UPDATE_FAILURES = 3;
+
 async function pollUpdates(config: { token: string; apiBaseUrl: string }) {
   let offset = 0;
+  const failureCounts = new Map<number, number>();
   console.log("Bale bot polling started.");
 
   while (true) {
@@ -26,11 +34,28 @@ async function pollUpdates(config: { token: string; apiBaseUrl: string }) {
     });
 
     for (const update of updates ?? []) {
-      offset = (update.update_id ?? offset) + 1;
+      const updateId = update.update_id ?? offset;
+
       try {
         await processBaleUpdate(config, update);
+        failureCounts.delete(updateId);
+        offset = updateId + 1;
       } catch (error) {
-        console.error("Failed to handle update:", error instanceof Error ? error.message : error);
+        const failures = (failureCounts.get(updateId) ?? 0) + 1;
+        failureCounts.set(updateId, failures);
+        console.error(
+          `Failed to handle update ${updateId} (attempt ${failures}/${MAX_UPDATE_FAILURES}):`,
+          error instanceof Error ? error.message : error
+        );
+
+        if (failures >= MAX_UPDATE_FAILURES) {
+          console.error(
+            `Dead-lettering update ${updateId} after ${failures} failed attempts:`,
+            JSON.stringify(update)?.slice(0, 1000)
+          );
+          failureCounts.delete(updateId);
+          offset = updateId + 1;
+        }
       }
     }
   }

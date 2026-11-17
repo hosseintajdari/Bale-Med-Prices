@@ -1,5 +1,6 @@
 import { calculateTax } from "./calculate-tax.ts";
 import { calculateProfit } from "./calculate-profit.ts";
+import { compareDatesDesc, isDateOnOrAfter } from "../date-utils.ts";
 
 function roundValue(value, roundingRule) {
   if (roundingRule === "ceil") {
@@ -23,9 +24,9 @@ function calculateTechnicalFee(input) {
 
   const appliedRule =
     [...input.technicalFeeRules]
-      .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate))
+      .sort((left, right) => compareDatesDesc(left.effectiveDate, right.effectiveDate))
       .find((rule) => {
-        if (input.documentDate < rule.effectiveDate) {
+        if (!isDateOnOrAfter(input.documentDate, rule.effectiveDate)) {
           return false;
         }
 
@@ -55,11 +56,19 @@ function calculateTechnicalFee(input) {
 
 export function calculateFinalPrice(input) {
   const warnings = [];
-  const unitBasePrice = input.good.sellPrice || input.good.tempPrice || 0;
+
+  // Fixes #27: Settings.pricePolicy is defined but was never honored —
+  // the code hardcoded sellPrice-first. The policy now flows in via
+  // PricingInput and decides which listed price is the primary one.
+  const pricePolicy = input.pricePolicy ?? "sellPriceFirst";
+  const preferredField = pricePolicy === "tempPriceFirst" ? "tempPrice" : "sellPrice";
+  const fallbackField = pricePolicy === "tempPriceFirst" ? "sellPrice" : "tempPrice";
+
+  const unitBasePrice = input.good[preferredField] || input.good[fallbackField] || 0;
   const basePrice = roundValue(unitBasePrice * input.quantity, input.roundingRule);
 
-  if (!input.good.sellPrice && input.good.tempPrice) {
-    warnings.push("Used tempPrice because sellPrice was not available.");
+  if (!input.good[preferredField] && input.good[fallbackField]) {
+    warnings.push(`Used ${fallbackField} because ${preferredField} was not available.`);
   }
 
   if (!input.taxData) {
@@ -116,7 +125,9 @@ export function calculateFinalPrice(input) {
     totalTax,
     technicalFee,
     finalPrice,
-    avgCost: totalCost,
+    // Fixes #44: this field was named avgCost but it is the TOTAL cost
+    // (round(avgCost × quantity)) — misleading consumers into double-multiplying.
+    totalCost,
     profitAmount: profit.profitAmount,
     profitPercent: profit.profitPercent,
     appliedTaxDate: appliedRate?.date ?? null,

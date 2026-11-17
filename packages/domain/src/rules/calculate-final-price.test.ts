@@ -32,6 +32,7 @@ test("calculateFinalPrice applies tax, toll, technical fee, and profit for pharm
     includeTechnicalFee: true,
     taxMultiplier: 0.75,
     roundingRule: "round",
+    pricePolicy: "sellPriceFirst",
     taxData: {
       code: "TAX_MED_STANDARD",
       title: "Medicine Standard Tax",
@@ -60,7 +61,7 @@ test("calculateFinalPrice applies tax, toll, technical fee, and profit for pharm
   assert.equal(result.tollAmount, 4550);
   assert.equal(result.technicalFee, 30000);
   assert.equal(result.finalPrice, 418200);
-  assert.equal(result.avgCost, 264000);
+  assert.equal(result.totalCost, 264000);
   assert.equal(result.profitAmount, 154200);
   assert.equal(result.profitPercent, 58);
   assert.equal(result.unitLabel, "capsule");
@@ -98,6 +99,7 @@ test("calculateFinalPrice reports missing cost and skips technical fee for non-p
     includeTechnicalFee: true,
     taxMultiplier: 0.75,
     roundingRule: "round",
+    pricePolicy: "sellPriceFirst",
     taxData: {
       code: "TAX_COSMETIC",
       title: "Cosmetic Tax",
@@ -125,4 +127,43 @@ test("calculateFinalPrice reports missing cost and skips technical fee for non-p
     "Technical fee was requested but no applicable rule matched.",
     "Average cost is not available for this good and warehouse."
   ]);
+});
+
+test("calculateFinalPrice honors pricePolicy tempPriceFirst (#27)", () => {
+  const baseGood = {
+    id: "g-9001",
+    internalCode: "INT-9001",
+    barcode: "6261001900011",
+    genericCode: "GEN-TMP",
+    title: "Temp-first Good",
+    persianTitle: "کالای موقت",
+    englishTitle: "Temp-first Good",
+    aliases: [],
+    brand: "Test",
+    sellPrice: 100000,
+    tempPrice: 90000,
+    taxCodes: [],
+    nonPharma: false,
+    countInPackage: 1,
+    unitLabel: "tablet",
+    packLabel: "box",
+    sources: []
+  };
+  const input = {
+    good: baseGood,
+    quantity: 1,
+    documentDate: "2026-06-24",
+    includeTechnicalFee: false,
+    taxMultiplier: 1,
+    roundingRule: "round",
+    taxData: null,
+    technicalFeeRules: [],
+    avgCost: null
+  };
+
+  const sellFirst = calculateFinalPrice({ ...input, pricePolicy: "sellPriceFirst" });
+  assert.equal(sellFirst.unitBasePrice, 100000);
+
+  const tempFirst = calculateFinalPrice({ ...input, pricePolicy: "tempPriceFirst" });
+  assert.equal(tempFirst.unitBasePrice, 90000);
 });

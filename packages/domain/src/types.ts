@@ -79,6 +79,7 @@ export interface PricingInput {
   includeTechnicalFee: boolean;
   taxMultiplier: number;
   roundingRule: Settings["roundingRule"];
+  pricePolicy: Settings["pricePolicy"];
   taxData: TaxData | null;
   technicalFeeRules: TechnicalFeeRule[];
   avgCost: number | null;

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { loadBaleBotConfig } from "../../../bale-bot/src/config.ts";
 import { processBaleUpdate } from "../../../bale-bot/src/process-update.ts";
 import { registerBaleWebhook } from "../../../bale-bot/src/bale-bot-lib.ts";
@@ -27,6 +28,16 @@ async function readJsonBody(request) {
   }
 }
 
+function secretsEqual(provided, expected) {
+  const providedBuffer = Buffer.from(provided ?? "");
+  const expectedBuffer = Buffer.from(expected ?? "");
+
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  );
+}
+
 function getRequestHeader(request, name) {
   const value = request.headers[name];
 
@@ -54,12 +65,25 @@ export const baleWebhookController = {
       return;
     }
 
+    // Same fail-closed guard as the Telegram webhook (#21): webhook mode
+    // without a secret refuses to serve instead of processing forged updates.
+    if (config.useWebhook && !config.webhookSecret) {
+      response.statusCode = 503;
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({
+          error: "Bale webhook secret is not configured (BALE_WEBHOOK_SECRET)"
+        })
+      );
+      return;
+    }
+
     if (config.webhookSecret) {
       const providedSecret =
         getRequestHeader(request, "x-bale-bot-api-secret-token") ||
         getRequestHeader(request, "x-telegram-bot-api-secret-token");
 
-      if (providedSecret !== config.webhookSecret) {
+      if (!secretsEqual(providedSecret, config.webhookSecret)) {
         response.statusCode = 401;
         response.end("Unauthorized");
         return;

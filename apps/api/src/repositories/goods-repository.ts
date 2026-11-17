@@ -57,30 +57,49 @@ function findExplicitKeys(query, aliases) {
     .map(([key]) => key);
 }
 
-function levenshteinDistance(left, right) {
-  const rows = Array.from({ length: left.length + 1 }, () => []);
+const MAX_QUERY_LENGTH = 200;
+const MAX_SEARCH_RESULTS = 50;
+const FUZZY_MAX_DISTANCE = 1;
 
-  for (let index = 0; index <= left.length; index += 1) {
-    rows[index][0] = index;
+/**
+ * Fixes #23 (part): edit distance with early exit — bails as soon as the
+ * current DP row's minimum exceeds maxDistance instead of computing the full
+ * O(m·n) matrix for every token pair.
+ */
+function levenshteinWithin(left, right, maxDistance) {
+  if (Math.abs(left.length - right.length) > maxDistance) {
+    return false;
   }
 
-  for (let index = 0; index <= right.length; index += 1) {
-    rows[0][index] = index;
-  }
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
 
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowMinimum = leftIndex;
+
     for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
       const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
-
-      rows[leftIndex][rightIndex] = Math.min(
-        rows[leftIndex - 1][rightIndex] + 1,
-        rows[leftIndex][rightIndex - 1] + 1,
-        rows[leftIndex - 1][rightIndex - 1] + substitutionCost
+      const value = Math.min(
+        previous[rightIndex] + 1,
+        current[rightIndex - 1] + 1,
+        previous[rightIndex - 1] + substitutionCost
       );
+
+      current[rightIndex] = value;
+
+      if (value < rowMinimum) {
+        rowMinimum = value;
+      }
     }
+
+    if (rowMinimum > maxDistance) {
+      return false;
+    }
+
+    previous = current;
   }
 
-  return rows[left.length][right.length];
+  return previous[right.length] <= maxDistance;
 }
 
 function fuzzyTokenMatch(token, candidate) {
@@ -93,10 +112,10 @@ function fuzzyTokenMatch(token, candidate) {
   }
 
   if (token.length < 5 || candidate.length < 5) {
-    return DOSAGE_FORM_TOKENS.has(candidate) && levenshteinDistance(token, candidate) <= 1;
+    return DOSAGE_FORM_TOKENS.has(candidate) && levenshteinWithin(token, candidate, FUZZY_MAX_DISTANCE);
   }
 
-  return levenshteinDistance(token, candidate) <= 1;
+  return levenshteinWithin(token, candidate, FUZZY_MAX_DISTANCE);
 }
 
 function scoreFieldMatches(term, tokens, value, weight) {
@@ -174,7 +193,9 @@ function scoreGood(term, tokens, good, query) {
 
 export const goodsRepository = {
   search(input) {
-    const query = input?.query ?? "";
+    // Fixes #23 (part): cap the query length so a very long `q` cannot burn
+    // CPU in the fuzzy matcher.
+    const query = String(input?.query ?? "").slice(0, MAX_QUERY_LENGTH);
     const term = normalizeSearchText(query);
     const tokens = tokenize(term);
 
@@ -199,7 +220,10 @@ export const goodsRepository = {
           good.patientFormLabel,
           good.packageDescription,
           good.activeStatus,
-          ...good.aliases
+          // Fixes #24: a catalog record missing `aliases` used to throw a
+          // TypeError here and (via the synchronous controller call) crash
+          // the whole Node process.
+          ...(good.aliases ?? [])
         ].filter(Boolean);
 
         const searchableTerms = haystacks.map((value) => normalizeSearchText(value));
@@ -214,7 +238,10 @@ export const goodsRepository = {
       })
       .sort(
         (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
-      );
+      )
+      // Fixes #23 (part): cap the result set — no pagination yet, but a
+      // single query can no longer return an unbounded list.
+      .slice(0, MAX_SEARCH_RESULTS);
   },
 
   getById(id) {

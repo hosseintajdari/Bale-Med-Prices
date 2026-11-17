@@ -4,8 +4,11 @@ import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 const defaultDate = "2026-06-24";
+// Fixes #43 (part): the localhost fallback is dev-only — in production the
+// API base must be configured explicitly (mixed-content risk otherwise).
 const defaultApiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:4000");
 
 interface SearchItem {
   id: string;
@@ -34,7 +37,7 @@ interface PricingResult {
   totalTax: number;
   technicalFee: number;
   finalPrice: number;
-  avgCost: number | null;
+  totalCost: number | null;
   profitAmount: number | null;
   profitPercent: number | null;
   appliedTaxDate: string | null;
@@ -95,6 +98,21 @@ export function PricingWorkbench() {
         setSearchError(null);
 
         const term = deferredQuery.trim();
+
+        // Fixes #43 (part): do not fire a search on mount with an empty query.
+        if (!term) {
+          startTransition(() => {
+            setSearchResults([]);
+          });
+          setIsSearching(false);
+          return;
+        }
+
+        if (!defaultApiBaseUrl) {
+          throw new Error(
+            "API base URL is not configured (set NEXT_PUBLIC_API_BASE_URL)"
+          );
+        }
         const response = await fetch(
           `${defaultApiBaseUrl}/goods/search?q=${encodeURIComponent(term)}`
         );
@@ -153,6 +171,28 @@ export function PricingWorkbench() {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    // Fixes #43 (part): validate quantity client-side — Number("") is 0 and
+    // Number("abc") is NaN, both used to be sent to the API unchecked.
+    const quantity = Number(form.quantity);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setPricingResult(null);
+      setPricingError("Quantity must be a positive number.");
+      return;
+    }
+
+    if (quantity > 10000) {
+      setPricingResult(null);
+      setPricingError("Quantity must not exceed 10000.");
+      return;
+    }
+
+    if (!defaultApiBaseUrl) {
+      setPricingResult(null);
+      setPricingError("API base URL is not configured (set NEXT_PUBLIC_API_BASE_URL).");
+      return;
+    }
+
     async function runCalculation() {
       try {
         setIsCalculating(true);
@@ -166,7 +206,7 @@ export function PricingWorkbench() {
           body: JSON.stringify({
             goodId: form.goodId,
             documentDate: form.documentDate,
-            quantity: Number(form.quantity),
+            quantity,
             warehouseId: form.warehouseId,
             includeTechnicalFee: form.includeTechnicalFee
           })
@@ -393,7 +433,7 @@ export function PricingWorkbench() {
               ["Toll amount", formatCurrency(pricingResult.tollAmount)],
               ["Technical fee", formatCurrency(pricingResult.technicalFee)],
               ["Final price", formatCurrency(pricingResult.finalPrice)],
-              ["Average cost", formatCurrency(pricingResult.avgCost)],
+              ["Total cost", formatCurrency(pricingResult.totalCost)],
               ["Profit amount", formatCurrency(pricingResult.profitAmount)],
               [
                 "Profit percent",

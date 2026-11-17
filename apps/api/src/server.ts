@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { pricingController } from "./controllers/pricing-controller.ts";
 import { goodsController } from "./controllers/goods-controller.ts";
 import { botController } from "./controllers/bot-controller.ts";
+import { isRateLimited } from "./rate-limiter.ts";
 import {
   maybeRegisterTelegramWebhookOnStartup,
   telegramWebhookController
@@ -32,7 +33,21 @@ const staticFiles = new Map([
   ]
 ]);
 
-const port = Number(process.env.PORT ?? 4000);
+// Fixes #35: Number("abc") is NaN and server.listen(NaN) throws at boot.
+// Validate the port and fall back to 4000 with a warning instead.
+function resolvePort() {
+  const raw = process.env.PORT ?? "4000";
+  const parsed = Number(raw);
+
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+    console.warn(`Invalid PORT "${raw}" — falling back to 4000.`);
+    return 4000;
+  }
+
+  return parsed;
+}
+
+const port = resolvePort();
 
 const server = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
@@ -51,6 +66,25 @@ const server = createServer(async (request, response) => {
     response.statusCode = 204;
     response.end();
     return;
+  }
+
+  // Fixes #34: per-IP token bucket on the expensive endpoints so one client
+  // cannot hammer search/pricing/bot lookups.
+  const rateLimitedPaths = new Set([
+    "/goods/search",
+    "/bot/lookup",
+    "/bot/select",
+    "/pricing/calculate"
+  ]);
+
+  if (request.method !== "OPTIONS" && rateLimitedPaths.has(requestPath)) {
+    if (isRateLimited(request)) {
+      response.statusCode = 429;
+      response.setHeader("Content-Type", "application/json");
+      response.setHeader("Retry-After", "60");
+      response.end(JSON.stringify({ error: "Rate limit exceeded. Please retry shortly." }));
+      return;
+    }
   }
 
   if (request.method === "GET") {
@@ -93,22 +127,25 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === "GET" && request.url.startsWith("/goods/search")) {
+  // Fixes #39: routes match on the parsed pathname, not the raw URL, so
+  // "/goods/searching" no longer routes to search and a query string or
+  // trailing slash on a detail URL does not corrupt the id.
+  if (request.method === "GET" && requestPath === "/goods/search") {
     await goodsController.search(request, response);
     return;
   }
 
-  if (request.method === "GET" && request.url.startsWith("/bot/lookup")) {
+  if (request.method === "GET" && requestPath === "/bot/lookup") {
     botController.lookup(request, response);
     return;
   }
 
-  if (request.method === "GET" && request.url.startsWith("/bot/select")) {
+  if (request.method === "GET" && requestPath === "/bot/select") {
     botController.select(request, response);
     return;
   }
 
-  if (request.method === "GET" && request.url.startsWith("/goods/")) {
+  if (request.method === "GET" && requestPath.startsWith("/goods/")) {
     goodsController.getById(request, response);
     return;
   }

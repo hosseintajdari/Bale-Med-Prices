@@ -262,10 +262,14 @@ test("pricingService returns patient-facing consumer pricing fields", () => {
   assert.equal(result.goodId, "g-1004");
   assert.equal(result.persianTitle, "شربت سرفه ۱۲۰ میلی لیتر");
   assert.equal(result.unitLabel, "bottle");
-  assert.equal(result.consumerUnitPrice, 128000);
+  // #26: consumerUnitPrice is now the tax-inclusive unit price (304200 / 2).
+  assert.equal(result.consumerUnitPrice, 152100);
   assert.equal(result.consumerTotalPrice, 256000);
   assert.equal(result.finalConsumerPrice, 304200);
-  assert.equal(result.packEstimatedPrice, 304200);
+  // #44: renamed from avgCost (it is the total cost); #49: packEstimatedPrice removed.
+  assert.equal(result.totalCost, 196000);
+  assert.equal("packEstimatedPrice" in result, false);
+  assert.equal("avgCost" in result, false);
   assert.equal(result.sourceHints[0].key, "qanoon");
   assert.equal(result.sourceHints[1].key, "ttac");
   assert.equal("telegram" in result, false);

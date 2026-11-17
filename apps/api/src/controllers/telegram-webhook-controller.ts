@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { loadTelegramBotConfig } from "../../../telegram-bot/src/config.ts";
 import { processTelegramUpdate } from "../../../telegram-bot/src/process-update.ts";
 import { registerTelegramWebhook } from "../../../telegram-bot/src/telegram-bot-lib.ts";
@@ -27,6 +28,16 @@ async function readJsonBody(request) {
   }
 }
 
+function secretsEqual(provided, expected) {
+  const providedBuffer = Buffer.from(provided ?? "");
+  const expectedBuffer = Buffer.from(expected ?? "");
+
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  );
+}
+
 function getRequestHeader(request, name) {
   const value = request.headers[name];
 
@@ -54,10 +65,24 @@ export const telegramWebhookController = {
       return;
     }
 
+    // Fixes #21: fail closed — a deployment that sets a webhook URL but
+    // forgets TELEGRAM_WEBHOOK_SECRET used to silently process forged
+    // updates. Webhook mode without a secret now refuses to serve.
+    if (config.useWebhook && !config.webhookSecret) {
+      response.statusCode = 503;
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({
+          error: "Telegram webhook secret is not configured (TELEGRAM_WEBHOOK_SECRET)"
+        })
+      );
+      return;
+    }
+
     if (config.webhookSecret) {
       const providedSecret = getRequestHeader(request, "x-telegram-bot-api-secret-token");
 
-      if (providedSecret !== config.webhookSecret) {
+      if (!secretsEqual(providedSecret, config.webhookSecret)) {
         response.statusCode = 401;
         response.end("Unauthorized");
         return;

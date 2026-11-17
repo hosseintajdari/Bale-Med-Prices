@@ -113,7 +113,8 @@ async function readLookupResponse(response: Response, endpoint: string): Promise
 export async function fetchLookup(apiBaseUrl: string, query: string): Promise<LookupResponse> {
   const base = apiBaseUrl.replace(/\/$/, "");
   const response = await fetch(
-    `${base}/bot/lookup?${new URLSearchParams({ q: query, format: "default" })}`
+    `${base}/bot/lookup?${new URLSearchParams({ q: query, format: "default" })}`,
+    { signal: AbortSignal.timeout(15000) }
   );
   return readLookupResponse(response, "lookup");
 }
@@ -122,7 +123,8 @@ export async function fetchLookup(apiBaseUrl: string, query: string): Promise<Lo
 export async function fetchSelect(apiBaseUrl: string, callbackData: string): Promise<LookupResponse> {
   const base = apiBaseUrl.replace(/\/$/, "");
   const response = await fetch(
-    `${base}/bot/select?${new URLSearchParams({ callbackData, format: "default" })}`
+    `${base}/bot/select?${new URLSearchParams({ callbackData, format: "default" })}`,
+    { signal: AbortSignal.timeout(15000) }
   );
   return readLookupResponse(response, "select");
 }
