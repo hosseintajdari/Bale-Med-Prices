@@ -25,18 +25,48 @@ function loadGoods(): Good[] {
 // is not an error: the primary catalog is served alone, silently.
 export function sanitizeRestGoods(parsed: unknown): Good[] {
   if (!Array.isArray(parsed)) return [];
+  const str = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
+  const optStr = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
+  const num = (v: unknown, dflt: number): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : dflt;
+  const strArray = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((a) => typeof a === "string") : [];
   const out: Good[] = [];
   for (const entry of parsed) {
     if (!entry || typeof entry !== "object") continue;
     const e = entry as Record<string, unknown>;
     if (typeof e.id !== "string" || e.id.length === 0) continue;
+    // Build a COMPLETE Good with type-checked fields: downstream code
+    // (search precompute, scoring, presenters) reads aliases/sources/
+    // taxCodes and numeric fields without guards, so a sparse or
+    // mistyped entry must arrive fully defaulted, never raw.
     out.push({
-      ...e,
-      internalCode: typeof e.internalCode === "string" ? e.internalCode : String(e.internalCode ?? ""),
-      persianTitle: typeof e.persianTitle === "string" ? e.persianTitle : String(e.persianTitle ?? ""),
-      title: typeof e.title === "string" ? e.title : String(e.title ?? ""),
-      englishTitle: typeof e.englishTitle === "string" ? e.englishTitle : String(e.englishTitle ?? ""),
-    } as Good);
+      id: e.id,
+      internalCode: str(e.internalCode),
+      barcode: str(e.barcode),
+      genericCode: str(e.genericCode),
+      title: str(e.title),
+      persianTitle: str(e.persianTitle),
+      englishTitle: str(e.englishTitle),
+      aliases: strArray(e.aliases),
+      brand: str(e.brand),
+      sellPrice: num(e.sellPrice, 0),
+      taxCodes: Array.isArray(e.taxCodes) ? e.taxCodes.map((t) => String(t)) : [],
+      nonPharma: e.nonPharma === true,
+      countInPackage: num(e.countInPackage, 1),
+      unitLabel: str(e.unitLabel),
+      packLabel: str(e.packLabel),
+      dosageForm: optStr(e.dosageForm),
+      routeQualifier: optStr(e.routeQualifier),
+      strengthLabel: optStr(e.strengthLabel),
+      patientFormLabel: optStr(e.patientFormLabel),
+      packageDescription: optStr(e.packageDescription),
+      activeStatus:
+        e.activeStatus === "active" || e.activeStatus === "inactive" || e.activeStatus === "unknown"
+          ? e.activeStatus
+          : undefined,
+      sources: Array.isArray(e.sources) ? (e.sources as Good["sources"]) : [],
+    });
   }
   return out;
 }

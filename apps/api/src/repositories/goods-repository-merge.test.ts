@@ -89,3 +89,33 @@ test("sanitize of a non-array payload is an empty complement", () => {
   assert.deepEqual(sanitizeRestGoods({ goods: [] }), []);
   assert.deepEqual(sanitizeRestGoods(null), []);
 });
+
+test("sanitize fully defaults a sparse entry so unguarded downstream reads are safe", () => {
+  // The reviewer's boot-crash repro: no aliases/sources/taxCodes at all.
+  const cleaned = sanitizeRestGoods([{ id: "r-1", internalCode: "999999", persianTitle: "x" }]);
+  assert.equal(cleaned.length, 1);
+  const g = cleaned[0];
+  assert.deepEqual(g.aliases, []);
+  assert.deepEqual(g.sources, []);
+  assert.deepEqual(g.taxCodes, []);
+  assert.equal(g.sellPrice, 0);
+  assert.equal(g.countInPackage, 1);
+  assert.equal(g.barcode, "");
+  // the exact unguarded operations from the precompute and the scorer:
+  assert.doesNotThrow(() => [...g.aliases]);
+  assert.doesNotThrow(() => { for (const a of g.aliases ?? []) void a; });
+  assert.doesNotThrow(() => g.sources.map((s) => s));
+});
+
+test("sanitize drops non-string aliases and mistyped fields instead of passing them through", () => {
+  const cleaned = sanitizeRestGoods([{
+    id: "r-2", internalCode: "888", persianTitle: "کالا",
+    aliases: ["معتبر", 42, null, { x: 1 }], sellPrice: "not-a-number",
+    activeStatus: "bogus", sources: "nope",
+  }]);
+  assert.equal(cleaned.length, 1);
+  assert.deepEqual(cleaned[0].aliases, ["معتبر"]);
+  assert.equal(cleaned[0].sellPrice, 0);
+  assert.equal(cleaned[0].activeStatus, undefined);
+  assert.deepEqual(cleaned[0].sources, []);
+});
