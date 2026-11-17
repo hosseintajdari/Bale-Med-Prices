@@ -5,6 +5,34 @@ import {
   splitCompoundQuery,
   normalizedFormOf
 } from "../search/query-normalization.ts";
+import { normalizeSearchText } from "../search/search-normalization.ts";
+
+/**
+ * Merge Darukade supplement hits into a local answer (F2): local
+ * (official) items keep their order and come first; web items are
+ * appended only when their normalized name + price pair is new, capped
+ * so a big brand family cannot flood the answer.
+ */
+export function mergeSupplement(localItems, webItems, cap = 20) {
+  const keyOf = (item) =>
+    `${normalizeSearchText(item.persianTitle || item.title || "")}|${item.consumerUnitPrice ?? 0}`;
+  const seen = new Set(localItems.map(keyOf));
+  const merged = [...localItems];
+  let appended = 0;
+  for (const item of webItems) {
+    if (appended >= cap) {
+      break;
+    }
+    const key = keyOf(item);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(item);
+    appended++;
+  }
+  return merged;
+}
 
 function toPatientSource(source) {
   return {
@@ -71,13 +99,32 @@ function toWebSearchItem(hit) {
 }
 
 export const goodsService = {
-  search(input) {
+  /** Exact tier only — the fallback chain below composes its own steps. */
+  searchExact(input) {
     const items = goodsRepository.search({ query: input?.query ?? "" }).map(toPatientSearchItem);
 
     return {
       items,
       total: items.length
     };
+  },
+
+  /**
+   * Exact tier first; on a miss, the guarded fuzzy tier (F2) answers
+   * with its correction report attached as `fuzzy` — presenters label
+   * those results «نتیجه‌ی نزدیک», they are never silent exact answers.
+   */
+  search(input) {
+    const exact = this.searchExact(input);
+    if (exact.items.length > 0) {
+      return { ...exact, fuzzy: null };
+    }
+    const { goods, fuzzy } = goodsRepository.searchFuzzy({ query: input?.query ?? "" });
+    if (!fuzzy || goods.length === 0) {
+      return { items: [], total: 0, fuzzy: null };
+    }
+    const items = goods.map(toPatientSearchItem);
+    return { items, total: items.length, fuzzy };
   },
 
   /**
@@ -96,21 +143,21 @@ export const goodsService = {
     // empty answer WITHOUT scanning the catalog or fanning out — those
     // inputs were the Prime R2-5 hang class.
     if (!userQuery) {
-      return { items: [], total: 0, webFallback: false };
+      return { items: [], total: 0, webFallback: false, fuzzy: null };
     }
 
-    const local = this.search(input);
+    const local = this.searchExact(input);
     if (local.items.length > 0) {
-      return { ...local, webFallback: false };
+      return this.withSupplement({ ...local, webFallback: false, fuzzy: null }, userQuery);
     }
 
     // Conversational fallback: the raw sentence matched nothing, but its
     // filler-stripped core («قیمت آموکسی‌سیلین چنده» → «آموکسی سیلین»)
     // may be a plain catalog query.
     if (userQuery !== normalizedFormOf(rawQuery)) {
-      const retried = this.search({ query: userQuery });
+      const retried = this.searchExact({ query: userQuery });
       if (retried.items.length > 0) {
-        return { ...retried, webFallback: false };
+        return this.withSupplement({ ...retried, webFallback: false, fuzzy: null }, userQuery);
       }
     }
 
@@ -127,7 +174,7 @@ export const goodsService = {
       const merged = [];
       let everyPartHit = true;
       for (const part of parts) {
-        const partResult = this.search({ query: part });
+        const partResult = this.searchExact({ query: part });
         if (partResult.items.length === 0) {
           everyPartHit = false;
         }
@@ -139,8 +186,18 @@ export const goodsService = {
         }
       }
       if (everyPartHit && merged.length > 0) {
-        return { items: merged, total: merged.length, webFallback: false };
+        return { items: merged, total: merged.length, webFallback: false, fuzzy: null };
       }
+    }
+
+    // Guarded fuzzy tier (F2): the exact chain missed; a distance-1 typo
+    // of a real catalog drug answers here, labeled — before the web,
+    // whose scorers cannot be trusted with a misspelling (شربت سیتریزین
+    // used to return unrelated syrups from the web fan-out).
+    const fuzzyResult = goodsRepository.searchFuzzy({ query: userQuery });
+    if (fuzzyResult.goods.length > 0) {
+      const items = fuzzyResult.goods.map(toPatientSearchItem);
+      return { items, total: items.length, webFallback: false, fuzzy: fuzzyResult.fuzzy };
     }
 
     const { hits, meta } = await aggregatorService.searchWebWithMeta(userQuery);
@@ -150,8 +207,35 @@ export const goodsService = {
       items,
       total: items.length,
       webFallback: true,
-      webMeta: meta
+      webMeta: meta,
+      fuzzy: null
     };
+  },
+
+  /**
+   * Darukade supplement (F2, Prime R2-2/R2-6): when the query IS a
+   * Darukade brand or bare product name, that catalog's family joins the
+   * local answer instead of being shadowed by it — local items stay
+   * first (official prices lead), supplement hits are appended deduped.
+   * Any failure or non-indexed query returns the result untouched.
+   */
+  async withSupplement(result, userQuery) {
+    try {
+      if (!aggregatorService.isDarukadeIndexedQuery(userQuery)) {
+        return result;
+      }
+      const hits = await aggregatorService.searchDarukadeOnly(userQuery);
+      if (hits.length === 0) {
+        return result;
+      }
+      const items = mergeSupplement(result.items, hits.map(toWebSearchItem));
+      if (items.length === result.items.length) {
+        return result;
+      }
+      return { ...result, items, total: items.length, webSupplemented: true };
+    } catch {
+      return result;
+    }
   },
 
   getById(id) {
