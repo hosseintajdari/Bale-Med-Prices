@@ -180,8 +180,14 @@ function createFormSelection(query, items) {
 
 function createStrengthSelection(query, items) {
   const sessionId = selectionSessionStore.create({ query, items });
-  const strengthChoices = uniqueBy(items, strengthKeyFor).map((item) => ({
-    id: `strength:${strengthKeyFor(item)}`,
+  // The choice id carries the INDEX of the strength in this session's
+  // ordered unique list — never the raw label. A Persian strength label
+  // («۱۰۰ میلی‌گرم در ۵ میلی‌لیتر») inside `ms:<session>:strength:<label>`
+  // blows past Telegram's 64-BYTE callback_data cap (issue #61); an
+  // index is always a few bytes. continue() rebuilds the same ordered
+  // list from the session's items and maps the index back.
+  const strengthChoices = uniqueBy(items, strengthKeyFor).map((item, index) => ({
+    id: `strength:${index}`,
     label: item.strengthLabel,
     description: "انتخاب دوز دارو",
     value: {
@@ -334,7 +340,15 @@ export const medicineSelectionService = {
     }
 
     if (choiceId.startsWith("strength:")) {
-      const strength = choiceId.slice("strength:".length);
+      const index = Number(choiceId.slice("strength:".length));
+      const strengths = uniqueBy(items, strengthKeyFor).map((item) => strengthKeyFor(item));
+      if (!Number.isInteger(index) || index < 0 || index >= strengths.length) {
+        return {
+          type: "invalid_selection",
+          text: "انتخاب نامعتبر است. لطفاً نام دارو را دوباره بفرستید."
+        };
+      }
+      const strength = strengths[index];
       return finalizeSelectionIfResolved(
         resolveNextStep(
           query,

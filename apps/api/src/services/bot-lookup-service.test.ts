@@ -160,6 +160,42 @@ test("botController select resolves form and strength callbacks to Persian unit 
   assert.match(result.body.text, /قیمت هر قرص:/);
 });
 
+test("strength choice ids are index-based and always fit Telegram's 64-byte callback cap (issue #61)", () => {
+  const firstStep = botLookupService.lookup({
+    query: "استامینوفن",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  const tabletChoice = firstStep.selection.choices.find((choice) => choice.label === "قرص");
+  const strengthStep = botLookupService.select({
+    sessionId: firstStep.sessionId,
+    choiceId: tabletChoice.id,
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  assert.equal(strengthStep.type, "needs_strength_selection");
+  for (const choice of strengthStep.selection.choices) {
+    assert.match(choice.id, /^strength:\d+$/, "the id carries an index, never the raw Persian label");
+    const callback = `ms:${strengthStep.sessionId}:${choice.id}`;
+    assert.ok(Buffer.byteLength(callback, "utf8") <= 64, `callback within cap: ${callback}`);
+  }
+  // A stale pre-fix button (raw label in the id) degrades to a clean
+  // invalid-selection message instead of resolving the wrong strength.
+  const stale = botLookupService.select({
+    sessionId: strengthStep.sessionId,
+    choiceId: "strength:۵۰۰ میلی‌گرم",
+    documentDate: "2026-06-24",
+    quantity: 1,
+    warehouseId: "main",
+    includeTechnicalFee: true
+  });
+  assert.equal(stale.type, "invalid_selection");
+});
+
 test("botLookupService resolves a selected strength to unit price", () => {
   const firstStep = botLookupService.lookup({
     query: "استامینوفن",

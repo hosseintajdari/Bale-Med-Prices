@@ -33,7 +33,7 @@ function buildPricingText(result) {
   // internal workbench do not belong in a patient/bot answer; a total is
   // shown only when a quantity > 1 was actually requested.
   const lines = [
-    result.persianTitle || result.title,
+    result.persianTitle || result.title || "دارو",
     `قیمت هر ${patientUnitLabel(result.unitLabel)}: ${formatPriceFa(result.consumerUnitPrice)}`
   ];
 
@@ -52,7 +52,9 @@ function buildPricingText(result) {
     lines.push(`هشدار: ${result.warnings.join(" | ")}`);
   }
 
-  return lines.join("\n");
+  // No blank/undefined lines ever reach the reader (issue #61): a
+  // missing title or date must degrade silently, not print a hole.
+  return lines.filter((line) => typeof line === "string" && line.trim() !== "").join("\n");
 }
 
 function buildChoiceLine(choice) {

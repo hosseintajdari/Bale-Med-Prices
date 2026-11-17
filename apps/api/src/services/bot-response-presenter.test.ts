@@ -30,3 +30,10 @@ test("without a snapshot time the update line falls back to the document date", 
   const expected = formatJalaliDateFa("2026-11-17");
   assert.ok(text.includes(`به‌روزرسانی: ${expected}`));
 });
+
+test("a missing title degrades to a generic name — never a blank or 'undefined' line (issue #61)", () => {
+  const { text } = botResponsePresenter.pricing(pricingInput({ persianTitle: undefined, title: undefined }));
+  assert.ok(!text.includes("undefined"));
+  assert.ok(text.split("\n").every((line) => line.trim() !== ""), "no empty lines");
+  assert.ok(text.startsWith("دارو"));
+});
