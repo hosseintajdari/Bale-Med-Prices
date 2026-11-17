@@ -186,15 +186,27 @@ test("fuzzy strength guard: a stated strength that no candidate carries kills th
   assert.deepEqual(goods, []);
 });
 
-test("fuzzy: «آسپرین» lists the aseptine neighbour ONLY as an ambiguous suggestion, never a named correction", () => {
+test("fuzzy: «آسپرین» is an honest miss — a brand-only neighbour never carries a hit", () => {
   // آسپتین exists in the catalog only as a brand — it never heads a
-  // title — so the correction is not confident enough to name. The
-  // patient sees labeled suggestions with full product names, not a
-  // price presented as aspirin's.
+  // title — so it is not an eligible correction target at all. Under
+  // the hard guard (a wrong price is worse than "not found"), the
+  // aseptine douche's price is not served for «آسپرین», not even as a
+  // labeled suggestion; the sim battery scores any septibody presence
+  // as a leak. Brand typos become honest misses; exact brand spelling
+  // still works through the exact tier and the darukade index.
   const { goods, fuzzy } = searchFuzzyEntries(entries, "آسپرین");
-  assert.ok(ids(goods).includes("aseptine"));
-  assert.equal(fuzzy?.ambiguous, true);
-  assert.equal(fuzzy?.matchedTerm, null);
+  assert.deepEqual(goods, []);
+  assert.equal(fuzzy, null);
+});
+
+test("fuzzy: a joined generic name with a one-edit slip lands on the title's leading pair", () => {
+  // «اموکسیسیلین» — the generic written joined, alef typed plain. The
+  // exact tier's concat needs the exact spelling; the fuzzy tier may
+  // target the title's leading pair (head-anchored, generic position).
+  const { goods, fuzzy } = searchFuzzyEntries(entries, "اموکسیسیلین");
+  assert.ok(ids(goods).includes("amox-cap"));
+  assert.equal(fuzzy?.ambiguous, false);
+  assert.equal(fuzzy?.matchedTerm, "آموکسیسیلین");
 });
 
 test("fuzzy strength guard: «آسپرین 80» never lands on the 140ml aseptine douche", () => {

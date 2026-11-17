@@ -317,7 +317,7 @@ function matchesToken(token, entry) {
  * The returned map holds only the tokens that actually used the fuzz;
  * the caller decides whether a hit counts as a fuzzy result at all.
  */
-function fuzzyEntryMatch(entry, hardTokens, softTokens, queryFormKeys) {
+function fuzzyEntryMatch(entry, hardTokens, softTokens, queryFormKeys, headTokens) {
   if (queryFormKeys.length > 0) {
     if (entry.formKeys.length === 0) {
       return null;
@@ -339,9 +339,23 @@ function fuzzyEntryMatch(entry, hardTokens, softTokens, queryFormKeys) {
     const candidates = new Set();
     for (const tokens of entry.fieldTokens) {
       for (const candidateToken of tokens) {
-        if (isFuzzyCandidate(token, candidateToken)) {
+        // Generic-position candidates only: a correction may land on a
+        // token that heads a catalog title (a generic name), never on a
+        // brand-only token. «آسپرین» → «آسپتین» (a douche brand that
+        // heads nothing) is the leak this rule exists to close — under
+        // the hard guard, that query is an honest miss, not a labeled
+        // suggestion carrying the wrong product's price.
+        if (headTokens.has(candidateToken) && isFuzzyCandidate(token, candidateToken)) {
           candidates.add(candidateToken);
         }
+      }
+    }
+    // Joined generic names: «اموکسیسیلین» typed as one word (with a
+    // one-edit slip) against the title's leading pair — the pair is
+    // head-anchored by construction, so the same guard holds.
+    for (const concat of entry.titleConcatTokens) {
+      if (isFuzzyCandidate(token, concat)) {
+        candidates.add(concat);
       }
     }
     if (candidates.size === 0) {
@@ -440,6 +454,13 @@ interface SearchableGood {
   fieldTokens: string[][];
   /** Adjacent token pairs of each field, joined («آموکسی»+«سیلین»). */
   concatTokens: Set<string>;
+  /**
+   * The LEADING adjacent pair of each title («آموکسی»+«سیلین» from
+   * «آموکسی سیلین 500…») — the generic name written as one word. The
+   * only concat the fuzzy tier may target: head-anchored by
+   * construction, so a joined brand pair can never carry a correction.
+   */
+  titleConcatTokens: Set<string>;
   /** Canonical dosage-form keys this entry carries. */
   formKeys: string[];
 }
@@ -471,11 +492,21 @@ export function buildSearchableEntry(good: Good): SearchableGood {
       concatTokens.add(tokens[i] + tokens[i + 1]);
     }
   }
+  const titleConcatTokens = new Set<string>();
+  for (const title of [good.persianTitle, good.englishTitle]) {
+    const tokens = normalizeSearchText(title ?? "")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (tokens.length >= 2) {
+      titleConcatTokens.add(tokens[0] + tokens[1]);
+    }
+  }
   return {
     good,
     fields,
     fieldTokens,
     concatTokens,
+    titleConcatTokens,
     formKeys: formKeysOfTokens(fieldTokens.flat())
   };
 }
@@ -550,10 +581,23 @@ export function searchFuzzyEntries(
     }
   }
 
+  // Head tokens = first tokens of catalog titles (the generic names).
+  // Fuzzy corrections may only target these (see fuzzyEntryMatch), so a
+  // brand-only near-token can never carry a hit at all.
+  const headTokens = new Set<string>();
+  for (const entry of entries) {
+    for (const title of [entry.good.persianTitle, entry.good.englishTitle]) {
+      const head = normalizeSearchText(title ?? "").split(" ")[0];
+      if (head) {
+        headTokens.add(head);
+      }
+    }
+  }
+
   const hits: SearchableGood[] = [];
   const union = new Map<string, Set<string>>();
   for (const entry of entries) {
-    const corrections = fuzzyEntryMatch(entry, hardTokens, identityTokens, queryFormKeys);
+    const corrections = fuzzyEntryMatch(entry, hardTokens, identityTokens, queryFormKeys, headTokens);
     if (!corrections) {
       continue;
     }
@@ -580,26 +624,7 @@ export function searchFuzzyEntries(
     ...formCorrections,
     ...[...union.entries()].map(([from, set]) => ({ from, to: [...set] }))
   ];
-  // Brand-only candidates are suggestions, never a named correction:
-  // when every candidate for a token exists ONLY as a brand (it never
-  // heads a catalog title), the typo may have landed on an unrelated
-  // product's brand — «آسپرین» → «آسپتین» (a vaginal douche brand) is
-  // the live example. The items still list, labeled ambiguous, with
-  // their full names doing the disambiguation — no price is presented
-  // as the answer to the name the patient typed.
-  const headTokens = new Set<string>();
-  for (const entry of entries) {
-    for (const title of [entry.good.persianTitle, entry.good.englishTitle]) {
-      const head = normalizeSearchText(title ?? "").split(" ")[0];
-      if (head) {
-        headTokens.add(head);
-      }
-    }
-  }
-  const brandOnly = [...union.values()].some((set) =>
-    [...set].every((candidate) => !headTokens.has(candidate))
-  );
-  const ambiguous = brandOnly || corrections.some((c) => c.to.length > 1);
+  const ambiguous = corrections.some((c) => c.to.length > 1);
   let matchedTerm: string | null = null;
   if (!ambiguous) {
     if (corrections.length === 1) {
