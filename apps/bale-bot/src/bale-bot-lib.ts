@@ -307,8 +307,29 @@ export async function deleteBaleWebhook(token: string) {
   return callBaleApi(token, "deleteWebhook", { drop_pending_updates: false });
 }
 
+/** The API's guarded-fuzzy report (F2): present only on labeled near-matches. */
+export interface FuzzyInfo {
+  matchedTerm: string | null;
+  ambiguous: boolean;
+}
+
+/**
+ * Transparency line for fuzzy answers (SUGGESTIONS-2 #4): a typo match is
+ * announced as a near result, never dressed as the exact answer. An
+ * ambiguous correction names no drug — the patient checks the box.
+ */
+export function buildFuzzyNote(fuzzy: FuzzyInfo): string {
+  if (fuzzy.ambiguous || !fuzzy.matchedTerm) {
+    return "نتیجه‌ی نزدیک: برای این نام، چند داروی مشابه پیدا شد. نام و شکل دارو را با روی جعبه چک کنید؛ اگر دارویتان بینشان نیست، نام دقیق را بفرستید.";
+  }
+  return `نتیجه‌ی نزدیک: منظورتان «${fuzzy.matchedTerm}» بود؟ اگر درست نیست، نام روی جعبه را بفرستید.`;
+}
+
 /** Thin call to the aggregator API: GET /goods/search?q= */
-export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promise<PriceItem[]> {
+export async function fetchPriceSearchResult(
+  apiBaseUrl: string,
+  query: string
+): Promise<{ items: PriceItem[]; fuzzy: FuzzyInfo | null }> {
   const base = apiBaseUrl.replace(/\/$/, "");
   const response = await fetch(`${base}/goods/search?${new URLSearchParams({ q: query })}`);
 
@@ -327,7 +348,20 @@ export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promi
     throw new Error(payload?.error ?? `Price API search failed (${response.status})`);
   }
 
-  return Array.isArray(payload?.items) ? payload.items : [];
+  const fuzzy =
+    payload?.fuzzy && typeof payload.fuzzy === "object"
+      ? {
+          matchedTerm: typeof payload.fuzzy.matchedTerm === "string" ? payload.fuzzy.matchedTerm : null,
+          ambiguous: payload.fuzzy.ambiguous === true
+        }
+      : null;
+
+  return { items: Array.isArray(payload?.items) ? payload.items : [], fuzzy };
+}
+
+export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promise<PriceItem[]> {
+  const { items } = await fetchPriceSearchResult(apiBaseUrl, query);
+  return items;
 }
 
 export function readBaleBotConfig(env: NodeJS.ProcessEnv = process.env) {

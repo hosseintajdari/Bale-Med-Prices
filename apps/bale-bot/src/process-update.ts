@@ -17,10 +17,11 @@ import {
   buildHelpReply,
   buildNonTextReply,
   buildPhotoReply,
+  buildFuzzyNote,
   buildPriceReply,
   buildStartReply,
   extractCommand,
-  fetchPriceSearch,
+  fetchPriceSearchResult,
   editMessageText,
   isPageCallback,
   parsePageCallback,
@@ -46,20 +47,22 @@ interface BotConfig {
   apiBaseUrl: string;
 }
 
-const lastResults = new Map<string, { items: PriceItem[]; query: string }>();
+const lastResults = new Map<string, { items: PriceItem[]; query: string; note?: string }>();
 const MAX_SESSIONS = 500;
 
-export function rememberResults(chatId: string, items: PriceItem[], query = ""): void {
+export function rememberResults(chatId: string, items: PriceItem[], query = "", note?: string): void {
   if (lastResults.size >= MAX_SESSIONS) {
     const oldest = lastResults.keys().next().value;
     if (oldest !== undefined) {
       lastResults.delete(oldest);
     }
   }
-  lastResults.set(chatId, { items, query });
+  lastResults.set(chatId, { items, query, note });
 }
 
-export function recallResults(chatId: string): { items: PriceItem[]; query: string } | undefined {
+export function recallResults(
+  chatId: string
+): { items: PriceItem[]; query: string; note?: string } | undefined {
   return lastResults.get(chatId);
 }
 
@@ -83,7 +86,7 @@ async function processPageCallback(
     });
     return;
   }
-  const message = buildPriceReply(search.items, search.query, undefined, page);
+  const message = buildPriceReply(search.items, search.query, search.note, page);
   if (messageId !== undefined) {
     try {
       await editMessageText(config.token, chatId, messageId, message);
@@ -107,8 +110,13 @@ async function runAggregatorPriceFlow(
   note?: string
 ): Promise<boolean> {
   let items: PriceItem[];
+  let fuzzyNote: string | undefined;
   try {
-    items = await fetchPriceSearch(config.apiBaseUrl, displayQuery);
+    const result = await fetchPriceSearchResult(config.apiBaseUrl, displayQuery);
+    items = result.items;
+    // F2: a guarded-fuzzy answer is announced as a near result — the
+    // caller's own note (identity guard) still wins when both exist.
+    fuzzyNote = result.fuzzy ? buildFuzzyNote(result.fuzzy) : undefined;
   } catch (error) {
     if (error instanceof RateLimitedError) {
       await sendMessage(config.token, chatId, {
@@ -126,8 +134,9 @@ async function runAggregatorPriceFlow(
     return false;
   }
 
-  rememberResults(String(chatId), items, displayQuery);
-  await sendMessage(config.token, chatId, buildPriceReply(items, displayQuery, note));
+  const effectiveNote = note ?? fuzzyNote;
+  rememberResults(String(chatId), items, displayQuery, effectiveNote);
+  await sendMessage(config.token, chatId, buildPriceReply(items, displayQuery, effectiveNote));
   return true;
 }
 
