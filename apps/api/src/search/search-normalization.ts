@@ -24,6 +24,10 @@ export function normalizeSearchText(value) {
     .replace(/(\d)(\p{L})/gu, "$1 $2")
     .replace(/[يى]/g, "ی")
     .replace(/ك/g, "ک")
+    // آ and ا are interchangeable in Persian typing: catalog text mixes
+    // them («لورال» stored without آ, patients type «لورآل») and literal
+    // matchers (SQL LIKE in the darukade pull) have no fuzzy rescue.
+    .replace(/آ/g, "ا")
     .replace(/[‌\u200c]/g, " ")
     .replace(/میلی\s*گرم/g, "mg")
     .replace(/م\s*\.?\s*گ/g, "mg")

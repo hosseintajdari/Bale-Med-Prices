@@ -186,6 +186,32 @@ test("darukade adapter searches the local catalog read-only", async () => {
   }
 });
 
+test("darukade adapter finds a brand stored without آ from a query typed with آ", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "darukade-alef-"));
+  const path = join(dir, "darukade.sqlite3");
+  const db = new DatabaseSync(path);
+  db.exec(`CREATE TABLE darukade_products (
+    url TEXT NOT NULL, variant_idx INTEGER NOT NULL, name TEXT,
+    variant_title TEXT, brand_fa TEXT, brand_en TEXT, product_code TEXT,
+    price_toman INTEGER, original_price_toman INTEGER, discount_percent INTEGER,
+    in_stock INTEGER, store_count INTEGER, expiration TEXT,
+    fetched_at TEXT NOT NULL, PRIMARY KEY (url, variant_idx))`);
+  db.prepare(
+    `INSERT INTO darukade_products (url, variant_idx, name, variant_title, brand_fa, brand_en, price_toman, fetched_at)
+     VALUES (?, 0, ?, ?, ?, ?, ?, '2026-10-15T06:14:50+00:00')`
+  ).run("https://darukade.com/p/9", "رنگ مو قهوه ای", null, "لورال", "Loreal", 500000);
+  db.close();
+  const adapter = new DarukadeAdapter(path);
+  try {
+    const hits = await adapter.search("لورآل");
+    assert.equal(hits.length, 1, "آ/ا folding must bridge the stored brand and the typed query");
+    assert.equal(hits[0].priceRial, 5000000);
+  } finally {
+    adapter.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("darukade adapter disables itself when the DB is missing", async () => {
   const adapter = new DarukadeAdapter("/nonexistent/darukade.sqlite3");
   assert.equal(await adapter.health(), false);

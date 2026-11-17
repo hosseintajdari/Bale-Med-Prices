@@ -251,6 +251,13 @@ const DOSAGE_FORM_TOKENS = new Set([
   "شیاف",
   "آمپول",
   "تزریقی",
+  "اسپری",
+  "محلول",
+  "لوسیون",
+  "ژل",
+  "سوسپانسیون",
+  "پودر",
+  "استنشاقی",
   "tablet",
   "capsule",
   "syrup",
@@ -259,7 +266,14 @@ const DOSAGE_FORM_TOKENS = new Set([
   "ointment",
   "cream",
   "suppository",
-  "injection"
+  "injection",
+  "spray",
+  "solution",
+  "lotion",
+  "gel",
+  "suspension",
+  "powder",
+  "inhaler"
 ]);
 const FORM_ALIASES = new Map([
   ["tablet", ["tablet", "tab", "قرص"]],
@@ -322,13 +336,17 @@ function levenshteinDistance(left, right) {
   return rows[left.length][right.length];
 }
 
-function fuzzyTokenMatch(token, candidate) {
+export function fuzzyTokenMatch(token, candidate, { editAllowed = true } = {}) {
   if (!token || !candidate) {
     return false;
   }
 
   if (candidate.includes(token)) {
     return true;
+  }
+
+  if (!editAllowed) {
+    return false;
   }
 
   // Levenshtein distance is at least the length difference, so candidates
@@ -339,6 +357,15 @@ function fuzzyTokenMatch(token, candidate) {
 
   if (token.length < 5 || candidate.length < 5) {
     return DOSAGE_FORM_TOKENS.has(candidate) && levenshteinDistance(token, candidate) <= 1;
+  }
+
+  // Both long: a dosage-form candidate never bridges by edit distance.
+  // «اسپری» (spray) is Levenshtein-1 from «اسپرین» (aspirin) — with
+  // Persian-rich titles, every spray in the catalog would flood an
+  // aspirin query. Form words match exactly/by substring, or through
+  // the alias tables — never by a one-letter guess.
+  if (DOSAGE_FORM_TOKENS.has(candidate)) {
+    return false;
   }
 
   return levenshteinDistance(token, candidate) <= 1;
@@ -429,6 +456,8 @@ interface SearchableGood {
   fields: string[];
   /** Pre-split token lists of each field. */
   fieldTokens: string[][];
+  /** Prefix-run concatenations of each field's tokens (joined compounds). */
+  joinedTokens: string[];
 }
 
 const searchableGoods: SearchableGood[] = goods.map((good) => {
@@ -451,20 +480,77 @@ const searchableGoods: SearchableGood[] = goods.map((good) => {
   ].filter(Boolean);
 
   const fields = haystacks.map((value) => normalizeSearchText(value));
-  return {
-    good,
-    fields,
-    fieldTokens: fields.map((field) => field.split(/\s+/))
-  };
+  const fieldTokens = fields.map((field) => field.split(/\s+/));
+  // ZWNJ/space-split compounds («آموکسی‌سیلین» → tokens اموکسی + سیلین)
+  // are invisible to a patient who types the name joined
+  // («آموکسیسیلین», one token). For each field, add its prefix-run
+  // concatenations (اموکسی, اموکسیسیلین, اموکسیسیلین500, …) as joined
+  // candidates. They are matched ONLY by equality or edit distance —
+  // never by substring: a whole-field join would let «اسپرین» match
+  // across the اسپری+نازال boundary of an unrelated nasal spray.
+  const joinedTokens: string[] = [];
+  for (const tokens of fieldTokens) {
+    let run = "";
+    for (let i = 0; i < tokens.length; i += 1) {
+      run += tokens[i];
+      if (i >= 1) {
+        joinedTokens.push(run);
+      }
+    }
+  }
+  return { good, fields, fieldTokens, joinedTokens };
 });
 
-function matchesToken(token, entry) {
-  return entry.fields.some(
+/**
+ * Every field token in the catalog. Drives exact-match precedence: when
+ * the patient's token IS a real catalog token, it names a real drug —
+ * a Levenshtein-1 neighbour is then a DIFFERENT drug, not a typo
+ * (آسپرین exact-matches aspirin; آسپتین/SEPTIBODY must not leak in).
+ * Edit-distance matching stays on for tokens with no exact home.
+ */
+const tokenUniverse = new Set<string>();
+for (const entry of searchableGoods) {
+  for (const tokens of entry.fieldTokens) {
+    for (const token of tokens) {
+      if (token) {
+        tokenUniverse.add(token);
+      }
+    }
+  }
+  for (const joined of entry.joinedTokens) {
+    tokenUniverse.add(joined);
+  }
+}
+
+export function hasExactTokenMatch(token: string): boolean {
+  return tokenUniverse.has(token);
+}
+
+/** Joined-compound matching: equality, or a guarded edit distance. Never substring. */
+function joinedTokenMatch(token, joined, editAllowed) {
+  if (joined === token) {
+    return true;
+  }
+  if (!editAllowed || token.length < 5 || joined.length < 5) {
+    return false;
+  }
+  if (Math.abs(token.length - joined.length) > 1) {
+    return false;
+  }
+  return levenshteinDistance(token, joined) <= 1;
+}
+
+function matchesToken(token, entry, editAllowed = true) {
+  const inFields = entry.fields.some(
     (candidate, fieldIndex) =>
       entry.fieldTokens[fieldIndex].some((candidateToken) =>
-        fuzzyTokenMatch(token, candidateToken)
-      ) || fuzzyTokenMatch(token, candidate)
+        fuzzyTokenMatch(token, candidateToken, { editAllowed })
+      ) || fuzzyTokenMatch(token, candidate, { editAllowed })
   );
+  if (inFields) {
+    return true;
+  }
+  return entry.joinedTokens.some((joined) => joinedTokenMatch(token, joined, editAllowed));
 }
 
 export const goodsRepository = {
@@ -478,7 +564,9 @@ export const goodsRepository = {
     }
 
     return searchableGoods
-      .filter((entry) => tokens.every((token) => matchesToken(token, entry)))
+      .filter((entry) =>
+        tokens.every((token) => matchesToken(token, entry, !hasExactTokenMatch(token)))
+      )
       .map((entry) => entry.good)
       .sort(
         (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
