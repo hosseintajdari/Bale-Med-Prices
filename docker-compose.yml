@@ -16,6 +16,9 @@ services:
       # and no per-pharmacy data is ever mounted into this service.
       DARUKADE_DB_PATH: /app/data/scrapers/darukade.sqlite3
       QANUN_GOODS_PATH: /app/data/scrapers/qanun-goods.json
+      # Read-only REST complement dataset (rest_cycle.py). Merged fill-only
+      # by the API; absent file = primary catalog alone.
+      REST_GOODS_PATH: /app/data/scrapers/rest-goods.json
     volumes:
       - ${DARUKADE_DATA_DIR:-/home/admin/scrapers/data}:/app/data/scrapers:ro
     restart: unless-stopped
