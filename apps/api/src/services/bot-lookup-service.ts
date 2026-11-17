@@ -50,7 +50,12 @@ function calculateResolved(selection, input) {
     warehouseId: input.warehouseId ?? "main",
     includeTechnicalFee: Boolean(input.includeTechnicalFee)
   });
-  const presentation = botResponsePresenter.pricing({ ...pricing, documentDate });
+  const good = goodsRepository.getById(selection.goodId);
+  const presentation = botResponsePresenter.pricing({
+    ...pricing,
+    documentDate,
+    crawledAt: good?.crawledAt
+  });
   selectionHistoryStore.recordSuccessfulSelection(selection.query, selection.goodId);
 
   return {
