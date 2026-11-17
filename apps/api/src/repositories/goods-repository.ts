@@ -239,28 +239,14 @@ try {
   goods = baseGoods;
 }
 import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
+import {
+  formCorrectionFor,
+  formKeysOfTokens,
+  formSurfaceTokens,
+  isFuzzyCandidate,
+  isHardToken
+} from "../search/fuzzy-match.ts";
 import { selectionHistoryStore } from "../services/selection-history-store.ts";
-
-const DOSAGE_FORM_TOKENS = new Set([
-  "قرص",
-  "کپسول",
-  "شربت",
-  "قطره",
-  "پماد",
-  "کرم",
-  "شیاف",
-  "آمپول",
-  "تزریقی",
-  "tablet",
-  "capsule",
-  "syrup",
-  "drop",
-  "drops",
-  "ointment",
-  "cream",
-  "suppository",
-  "injection"
-]);
 const FORM_ALIASES = new Map([
   ["tablet", ["tablet", "tab", "قرص"]],
   ["capsule", ["capsule", "cap", "کپسول"]],
@@ -296,52 +282,88 @@ function findExplicitKeys(query, aliases) {
     .map(([key]) => key);
 }
 
-function levenshteinDistance(left, right) {
-  const rows = Array.from({ length: left.length + 1 }, () => []);
-
-  for (let index = 0; index <= left.length; index += 1) {
-    rows[index][0] = index;
-  }
-
-  for (let index = 0; index <= right.length; index += 1) {
-    rows[0][index] = index;
-  }
-
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
-
-      rows[leftIndex][rightIndex] = Math.min(
-        rows[leftIndex - 1][rightIndex] + 1,
-        rows[leftIndex][rightIndex - 1] + 1,
-        rows[leftIndex - 1][rightIndex - 1] + substitutionCost
-      );
-    }
-  }
-
-  return rows[left.length][right.length];
+/**
+ * Exact token match (F2): equality, substring containment, or the
+ * precomputed adjacent-token concatenation («آموکسیسیلین» written joined
+ * matches the catalog's two tokens «آموکسی»+«سیلین»). NO edit distance
+ * lives here any more — before F2 a Levenshtein≤1 check sat inside the
+ * exact path, so a typo silently returned a neighbouring product's price
+ * as if it were the answer (Prime R2-4: «آسپرین» → 380 junk hits, the
+ * aseptine douche among them; «سیتریزین» → only the wrong «ستریزین»
+ * capsule). Typos are now the guarded fuzzy tier's job (searchFuzzy).
+ */
+function exactTokenMatch(token, candidateToken) {
+  return candidateToken === token || candidateToken.includes(token);
 }
 
-function fuzzyTokenMatch(token, candidate) {
-  if (!token || !candidate) {
-    return false;
-  }
-
-  if (candidate.includes(token)) {
+function matchesToken(token, entry) {
+  if (entry.concatTokens.has(token)) {
     return true;
   }
+  return (
+    entry.fieldTokens.some((tokens) =>
+      tokens.some((candidateToken) => exactTokenMatch(token, candidateToken))
+    ) || entry.fields.some((field) => field.includes(token))
+  );
+}
 
-  // Levenshtein distance is at least the length difference, so candidates
-  // further than 1 char away can never fuzzy-match — skip the O(n*m) table.
-  if (Math.abs(token.length - candidate.length) > 1) {
-    return false;
+/**
+ * One entry against the fuzzy plan. Returns the per-token correction map
+ * when the entry matches, null otherwise. Guards (all hard):
+ * - form guard: a form stated in the query must be the entry's form —
+ *   an entry whose form cannot be verified is rejected, not guessed;
+ * - hard tokens (strengths, units, forms) match exactly or not at all;
+ * - soft tokens match exactly or within Damerau distance 1.
+ * The returned map holds only the tokens that actually used the fuzz;
+ * the caller decides whether a hit counts as a fuzzy result at all.
+ */
+function fuzzyEntryMatch(entry, hardTokens, softTokens, queryFormKeys, headTokens) {
+  if (queryFormKeys.length > 0) {
+    if (entry.formKeys.length === 0) {
+      return null;
+    }
+    if (!queryFormKeys.some((key) => entry.formKeys.includes(key))) {
+      return null;
+    }
   }
-
-  if (token.length < 5 || candidate.length < 5) {
-    return DOSAGE_FORM_TOKENS.has(candidate) && levenshteinDistance(token, candidate) <= 1;
+  for (const token of hardTokens) {
+    if (!matchesToken(token, entry)) {
+      return null;
+    }
   }
-
-  return levenshteinDistance(token, candidate) <= 1;
+  const corrections = new Map();
+  for (const token of softTokens) {
+    if (matchesToken(token, entry)) {
+      continue;
+    }
+    const candidates = new Set();
+    for (const tokens of entry.fieldTokens) {
+      for (const candidateToken of tokens) {
+        // Generic-position candidates only: a correction may land on a
+        // token that heads a catalog title (a generic name), never on a
+        // brand-only token. «آسپرین» → «آسپتین» (a douche brand that
+        // heads nothing) is the leak this rule exists to close — under
+        // the hard guard, that query is an honest miss, not a labeled
+        // suggestion carrying the wrong product's price.
+        if (headTokens.has(candidateToken) && isFuzzyCandidate(token, candidateToken)) {
+          candidates.add(candidateToken);
+        }
+      }
+    }
+    // Joined generic names: «اموکسیسیلین» typed as one word (with a
+    // one-edit slip) against the title's leading pair — the pair is
+    // head-anchored by construction, so the same guard holds.
+    for (const concat of entry.titleConcatTokens) {
+      if (isFuzzyCandidate(token, concat)) {
+        candidates.add(concat);
+      }
+    }
+    if (candidates.size === 0) {
+      return null;
+    }
+    corrections.set(token, candidates);
+  }
+  return corrections;
 }
 
 function scoreFieldMatches(term, tokens, value, weight) {
@@ -420,8 +442,9 @@ function scoreGood(term, tokens, good, query) {
 /**
  * Pre-normalized search fields per good. Normalizing ~16k catalogs' fields
  * on every query cost 3-5s per search (QA 2026-10-30 profile) — it is
- * identical for every query, so it is computed once at load. Matching
- * semantics are unchanged: same fields, same normalization, same fuzz.
+ * identical for every query, so it is computed once at load. F2 adds two
+ * precomputed indexes per entry: adjacent-token concatenations (joined
+ * spellings) and the entry's dosage-form keys (the fuzzy form guard).
  */
 interface SearchableGood {
   good: Good;
@@ -429,9 +452,20 @@ interface SearchableGood {
   fields: string[];
   /** Pre-split token lists of each field. */
   fieldTokens: string[][];
+  /** Adjacent token pairs of each field, joined («آموکسی»+«سیلین»). */
+  concatTokens: Set<string>;
+  /**
+   * The LEADING adjacent pair of each title («آموکسی»+«سیلین» from
+   * «آموکسی سیلین 500…») — the generic name written as one word. The
+   * only concat the fuzzy tier may target: head-anchored by
+   * construction, so a joined brand pair can never carry a correction.
+   */
+  titleConcatTokens: Set<string>;
+  /** Canonical dosage-form keys this entry carries. */
+  formKeys: string[];
 }
 
-const searchableGoods: SearchableGood[] = goods.map((good) => {
+export function buildSearchableEntry(good: Good): SearchableGood {
   const haystacks = [
     good.id,
     good.internalCode,
@@ -451,38 +485,172 @@ const searchableGoods: SearchableGood[] = goods.map((good) => {
   ].filter(Boolean);
 
   const fields = haystacks.map((value) => normalizeSearchText(value));
+  const fieldTokens = fields.map((field) => field.split(/\s+/).filter(Boolean));
+  const concatTokens = new Set<string>();
+  for (const tokens of fieldTokens) {
+    for (let i = 0; i < tokens.length - 1; i++) {
+      concatTokens.add(tokens[i] + tokens[i + 1]);
+    }
+  }
+  const titleConcatTokens = new Set<string>();
+  for (const title of [good.persianTitle, good.englishTitle]) {
+    const tokens = normalizeSearchText(title ?? "")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (tokens.length >= 2) {
+      titleConcatTokens.add(tokens[0] + tokens[1]);
+    }
+  }
   return {
     good,
     fields,
-    fieldTokens: fields.map((field) => field.split(/\s+/))
+    fieldTokens,
+    concatTokens,
+    titleConcatTokens,
+    formKeys: formKeysOfTokens(fieldTokens.flat())
   };
-});
+}
 
-function matchesToken(token, entry) {
-  return entry.fields.some(
-    (candidate, fieldIndex) =>
-      entry.fieldTokens[fieldIndex].some((candidateToken) =>
-        fuzzyTokenMatch(token, candidateToken)
-      ) || fuzzyTokenMatch(token, candidate)
-  );
+const searchableGoods: SearchableGood[] = goods.map(buildSearchableEntry);
+
+/** Exact tier over an explicit entry list (the seam tests run against). */
+export function exactSearchEntries(entries: SearchableGood[], query: string): Good[] {
+  const term = normalizeSearchText(query ?? "");
+  const tokens = tokenize(term);
+
+  if (!term) {
+    return entries.slice(0, 20).map((entry) => entry.good);
+  }
+
+  return entries
+    .filter((entry) => tokens.every((token) => matchesToken(token, entry)))
+    .map((entry) => entry.good)
+    .sort(
+      (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
+    );
+}
+
+export interface FuzzyOutcome {
+  /** The corrected token (single-token corrections) or corrected query; null when ambiguous. */
+  matchedTerm: string | null;
+  /** True when the typo maps to more than one distinct catalog token — suggestions, never one price. */
+  ambiguous: boolean;
+  corrections: { from: string; to: string[] }[];
+}
+
+/**
+ * Guarded fuzzy tier over an explicit entry list. Runs ONLY when the
+ * exact tier found nothing (the caller enforces that order). Returns the
+ * matched goods plus the correction report the presenters label with —
+ * fuzzy results are «نتیجه‌ی نزدیک», never silent exact answers.
+ */
+export function searchFuzzyEntries(
+  entries: SearchableGood[],
+  query: string
+): { goods: Good[]; fuzzy: FuzzyOutcome | null } {
+  const term = normalizeSearchText(query ?? "");
+  const tokens = tokenize(term);
+  if (!term || tokens.length === 0) {
+    return { goods: [], fuzzy: null };
+  }
+  const hardTokens = tokens.filter((token) => isHardToken(token));
+  const softTokens = tokens.filter((token) => !isHardToken(token));
+  if (softTokens.length === 0) {
+    return { goods: [], fuzzy: null };
+  }
+  const queryFormKeys = formKeysOfTokens(tokens);
+
+  // Mistyped form words («قرث») resolve inside the closed form
+  // vocabulary before matching: the token leaves the identity set, its
+  // family joins the form guard, and the correction is reported like
+  // any other. Identity tokens are never stolen by this pass — a token
+  // that corrects to a form family was not matching any drug name.
+  const identityTokens: string[] = [];
+  const formCorrections: { from: string; to: string[] }[] = [];
+  for (const token of softTokens) {
+    const family = formCorrectionFor(token);
+    if (family) {
+      if (!queryFormKeys.includes(family)) {
+        queryFormKeys.push(family);
+      }
+      const surfaces = formSurfaceTokens(family);
+      const surface = surfaces.find((s) => /[^\x00-\x7F]/.test(s)) ?? surfaces[0] ?? family;
+      formCorrections.push({ from: token, to: [surface] });
+    } else {
+      identityTokens.push(token);
+    }
+  }
+
+  // Head tokens = first tokens of catalog titles (the generic names).
+  // Fuzzy corrections may only target these (see fuzzyEntryMatch), so a
+  // brand-only near-token can never carry a hit at all.
+  const headTokens = new Set<string>();
+  for (const entry of entries) {
+    for (const title of [entry.good.persianTitle, entry.good.englishTitle]) {
+      const head = normalizeSearchText(title ?? "").split(" ")[0];
+      if (head) {
+        headTokens.add(head);
+      }
+    }
+  }
+
+  const hits: SearchableGood[] = [];
+  const union = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    const corrections = fuzzyEntryMatch(entry, hardTokens, identityTokens, queryFormKeys, headTokens);
+    if (!corrections) {
+      continue;
+    }
+    // A form correction alone is a real fuzzy use; an entry that matched
+    // every identity token exactly still counts when a form word was
+    // corrected — but not when nothing was corrected at all.
+    if (corrections.size === 0 && formCorrections.length === 0) {
+      continue;
+    }
+    hits.push(entry);
+    for (const [from, candidates] of corrections) {
+      const set = union.get(from) ?? new Set<string>();
+      for (const candidate of candidates) {
+        set.add(candidate);
+      }
+      union.set(from, set);
+    }
+  }
+  if (hits.length === 0) {
+    return { goods: [], fuzzy: null };
+  }
+
+  const corrections = [
+    ...formCorrections,
+    ...[...union.entries()].map(([from, set]) => ({ from, to: [...set] }))
+  ];
+  const ambiguous = corrections.some((c) => c.to.length > 1);
+  let matchedTerm: string | null = null;
+  if (!ambiguous) {
+    if (corrections.length === 1) {
+      matchedTerm = corrections[0].to[0];
+    } else {
+      const byToken = new Map(corrections.map((c) => [c.from, c.to[0]]));
+      matchedTerm = tokens.map((token) => byToken.get(token) ?? token).join(" ");
+    }
+  }
+
+  const sorted = hits
+    .map((entry) => entry.good)
+    .sort(
+      (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
+    );
+  return { goods: sorted, fuzzy: { matchedTerm, ambiguous, corrections } };
 }
 
 export const goodsRepository = {
   search(input) {
-    const query = input?.query ?? "";
-    const term = normalizeSearchText(query);
-    const tokens = tokenize(term);
+    return exactSearchEntries(searchableGoods, input?.query ?? "");
+  },
 
-    if (!term) {
-      return goods.slice(0, 20);
-    }
-
-    return searchableGoods
-      .filter((entry) => tokens.every((token) => matchesToken(token, entry)))
-      .map((entry) => entry.good)
-      .sort(
-        (left, right) => scoreGood(term, tokens, right, query) - scoreGood(term, tokens, left, query)
-      );
+  /** Guarded fuzzy tier over the live catalog — see searchFuzzyEntries. */
+  searchFuzzy(input) {
+    return searchFuzzyEntries(searchableGoods, input?.query ?? "");
   },
 
   getById(id) {

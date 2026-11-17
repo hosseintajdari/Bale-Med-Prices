@@ -256,9 +256,40 @@ export async function searchWithAdapters(
   };
 }
 
+const darukadeAdapter = adapters.find(
+  (adapter): adapter is DarukadeAdapter => adapter instanceof DarukadeAdapter
+);
+
+/**
+ * Darukade-only search for the supplement path (F2): when a query is a
+ * Darukade brand or bare product name, its family is merged into a local
+ * answer instead of being shadowed by it. Same per-adapter time budget
+ * as the fan-out; a timeout or failure degrades to no supplement.
+ */
+export async function searchDarukadeOnly(product: string, topN = 10): Promise<PriceHit[]> {
+  if (!darukadeAdapter) {
+    return [];
+  }
+  try {
+    return await withTimeout(darukadeAdapter.search(product, topN), adapterTimeoutMs(), () =>
+      new Error("darukade supplement timed out")
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** True when the query is a Darukade brand or bare product name (F2 index). */
+export function isDarukadeIndexedQuery(normalizedQuery: string): boolean {
+  return darukadeAdapter ? darukadeAdapter.isIndexedQuery(normalizedQuery) : false;
+}
+
 export const aggregatorService = {
   /** Registered adapter names, in priority order. */
   adapterNames: adapters.map((adapter) => adapter.name),
+
+  searchDarukadeOnly,
+  isDarukadeIndexedQuery,
 
   /**
    * Product name → deduplicated price hits across adapters.
