@@ -1,4 +1,23 @@
-import { goods } from "../data/mock-data.ts";
+import { readFileSync } from "node:fs";
+import { goods as mockGoods } from "../data/mock-data.ts";
+import type { Good } from "../../../../packages/domain/src/types.ts";
+
+function loadGoods(): Good[] {
+  const path = process.env.QANUN_GOODS_PATH;
+  if (path && process.env.NODE_ENV !== "test") {
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8"));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as Good[];
+      }
+    } catch {
+      // fall through to the bundled mock data
+    }
+  }
+  return mockGoods;
+}
+
+const goods: Good[] = loadGoods();
 import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
 import { selectionHistoryStore } from "../services/selection-history-store.ts";
 
