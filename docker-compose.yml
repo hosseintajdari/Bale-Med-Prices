@@ -4,6 +4,13 @@ services:
     ports:
       - "${PORT:-4000}:4000"
     env_file:
+      # Production keeps the real bot secrets in .secrets/ (server-local,
+      # never in git); local dev uses the .env.* files. All optional —
+      # whichever exist are loaded.
+      - path: .secrets/telegram.env
+        required: false
+      - path: .secrets/bale.env
+        required: false
       - path: .env.telegram
         required: false
       - path: .env.bale

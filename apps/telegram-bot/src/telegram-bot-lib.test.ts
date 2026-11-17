@@ -215,7 +215,7 @@ test("inline results carry the same price block and drop priceless items", async
   assert.equal(results.length, 2);
   assert.ok(results[0].input_message_content.message_text.includes("۴۵۰٬۰۰۰ ریال (۴۵٬۰۰۰ تومان)"));
   assert.ok(results[0].input_message_content.message_text.includes("به‌روزرسانی:"));
-  assert.ok(!/[0-9]/.test(results[0].id), "inline result ids stay URL/API-safe");
+  assert.ok(/^r\d+$/.test(results[0].id), "inline result ids stay ASCII-safe");
 
   const withPriceless = buildInlineResults(
     [{ persianTitle: "بی‌قیمت", consumerUnitPrice: 0 }, ...sampleItems],

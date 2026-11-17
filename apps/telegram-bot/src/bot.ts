@@ -12,6 +12,7 @@ import { processTelegramUpdate } from "./process-update.ts";
 import {
   callTelegramApi,
   deleteTelegramWebhook,
+  registerTelegramCommands,
   registerTelegramWebhook
 } from "./telegram-bot-lib.ts";
 
@@ -23,7 +24,7 @@ async function pollUpdates(config: { token: string; apiBaseUrl: string }) {
     const updates = await callTelegramApi(config.token, "getUpdates", {
       offset,
       timeout: 30,
-      allowed_updates: ["message", "callback_query"]
+      allowed_updates: ["message", "callback_query", "inline_query"]
     });
 
     for (const update of updates ?? []) {
@@ -38,6 +39,13 @@ async function pollUpdates(config: { token: string; apiBaseUrl: string }) {
 }
 
 export async function startTelegramBot(config = loadTelegramBotConfig()) {
+  // Native commands menu (Menu button) — best-effort, never blocks startup.
+  try {
+    await registerTelegramCommands(config.token);
+  } catch (error) {
+    console.error("Telegram commands registration skipped:", error instanceof Error ? error.message : error);
+  }
+
   if (config.useWebhook) {
     await registerTelegramWebhook(config.token, config.webhookUrl, config.webhookSecret);
     console.log(`Telegram webhook registered at ${config.webhookUrl}`);

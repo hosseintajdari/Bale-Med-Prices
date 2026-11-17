@@ -1,6 +1,8 @@
 /**
- * Telegram update routing — twin of apps/bale-bot/src/process-update.ts.
+ * Telegram update routing — same ladder as apps/bale-bot, native Telegram
+ * surface on top (typing action, callback alerts, inline mode).
  *
+ * - inline_query → price articles from the same search flow
  * - callback_query "pg:<page>" → turn the result page (edit in place)
  * - callback_query "ms:<sessionId>:<choiceId>" → selection ladder step
  *   (GET /bot/select → next menu or resolved price)
@@ -14,7 +16,13 @@
  */
 import {
   answerCallbackQuery,
+  answerInlineQuery,
+  buildGuardedSelectionMessage,
   buildHelpReply,
+  buildInlineHintResult,
+  buildInlineResults,
+  buildNonTextReply,
+  buildPhotoReply,
   buildPriceReply,
   buildStartReply,
   extractCommand,
@@ -23,13 +31,13 @@ import {
   isPageCallback,
   parsePageCallback,
   RateLimitedError,
+  sendChatAction,
   sendMessage,
   type PriceItem
 } from "./telegram-bot-lib.ts";
 import {
   buildFallbackText,
   buildIdentityGuardNote,
-  buildSelectionMessage,
   canonicalTitleForResolved,
   fetchLookup,
   fetchSelect,
@@ -154,7 +162,7 @@ async function handleLookupResponse(
   }
 
   if (isSelectionStep(lookup.type)) {
-    await sendMessage(config.token, chatId, buildSelectionMessage(lookup));
+    await sendMessage(config.token, chatId, buildGuardedSelectionMessage(lookup));
     return;
   }
 
@@ -194,7 +202,8 @@ async function processSelectionCallback(
       callbackQueryId,
       error instanceof LookupRateLimitedError
         ? "درخواست‌ها محدود شدند؛ چند دقیقه دیگر تلاش کنید."
-        : "خطا در استعلام. دوباره تلاش کنید."
+        : "خطا در استعلام. دوباره تلاش کنید.",
+      { show_alert: true }
     );
     return;
   }
@@ -227,6 +236,13 @@ async function processTextMessage(config: BotConfig, chatId: string, text: strin
     return;
   }
 
+  // Native typing indicator while the search runs — best-effort, never fatal.
+  try {
+    await sendChatAction(config.token, chatId, "typing");
+  } catch {
+    // A failed typing action must never cost the patient the answer.
+  }
+
   const served = await runAggregatorPriceFlow(config, chatId, query);
   if (!served) {
     // Aggregator found nothing — climb the no-LLM disambiguation ladder
@@ -235,7 +251,41 @@ async function processTextMessage(config: BotConfig, chatId: string, text: strin
   }
 }
 
+/**
+ * Inline mode: @BaleMedPricebot <drug> typed in any chat. Answers with
+ * price articles built from the same search flow; an empty query teaches
+ * the gesture. Never throws into the webhook handler — on any failure the
+ * inline query is answered empty so Telegram stops its spinner.
+ */
+async function processInlineQuery(config: BotConfig, inlineQuery: any) {
+  const query = String(inlineQuery?.query ?? "").trim();
+  try {
+    if (!query) {
+      await answerInlineQuery(config.token, inlineQuery.id, [buildInlineHintResult()]);
+      return;
+    }
+    let items: PriceItem[] = [];
+    try {
+      items = await fetchPriceSearch(config.apiBaseUrl, query);
+    } catch {
+      items = [];
+    }
+    await answerInlineQuery(config.token, inlineQuery.id, buildInlineResults(items, query));
+  } catch {
+    try {
+      await answerInlineQuery(config.token, inlineQuery.id, []);
+    } catch {
+      // Nothing left to do — the inline spinner times out on its own.
+    }
+  }
+}
+
 export async function processTelegramUpdate(config: BotConfig, update: any) {
+  if (update?.inline_query?.id) {
+    await processInlineQuery(config, update.inline_query);
+    return;
+  }
+
   if (update?.callback_query) {
     const cq = update.callback_query;
     const chatId = cq.message?.chat?.id;
@@ -247,13 +297,30 @@ export async function processTelegramUpdate(config: BotConfig, update: any) {
     } else if (isPageCallback(cq.data)) {
       await processPageCallback(config, String(chatId), cq.message?.message_id, cq.id, cq.data);
     } else {
-      await answerCallbackQuery(config.token, cq.id, "این دکمه قدیمی شده؛ دوباره جستجو کنید.");
+      await answerCallbackQuery(config.token, cq.id, "این دکمه قدیمی شده؛ دوباره جستجو کنید.", {
+        show_alert: true
+      });
     }
     return;
   }
 
   const message = update?.message;
-  if (message?.chat?.id === undefined || message?.chat?.id === null || typeof message.text !== "string") {
+  if (message?.chat?.id === undefined || message?.chat?.id === null) {
+    return;
+  }
+
+  if (typeof message.text !== "string") {
+    // A patient who sends a photo of the box gets guidance, never silence.
+    // Service messages (joins, pins, …) carry none of these content keys
+    // and stay silent, as before.
+    const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
+    const hasOtherContent = ["voice", "video", "video_note", "sticker", "document", "animation", "audio", "contact", "location"]
+      .some((key) => message[key] !== undefined);
+    if (hasPhoto) {
+      await sendMessage(config.token, String(message.chat.id), buildPhotoReply());
+    } else if (hasOtherContent) {
+      await sendMessage(config.token, String(message.chat.id), buildNonTextReply());
+    }
     return;
   }
 

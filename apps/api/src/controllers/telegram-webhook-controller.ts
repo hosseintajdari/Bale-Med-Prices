@@ -1,6 +1,9 @@
 import { loadTelegramBotConfig } from "../../../telegram-bot/src/config.ts";
 import { processTelegramUpdate } from "../../../telegram-bot/src/process-update.ts";
-import { registerTelegramWebhook } from "../../../telegram-bot/src/telegram-bot-lib.ts";
+import {
+  registerTelegramCommands,
+  registerTelegramWebhook
+} from "../../../telegram-bot/src/telegram-bot-lib.ts";
 
 async function readJsonBody(request) {
   const chunks = [];
@@ -96,6 +99,13 @@ export async function maybeRegisterTelegramWebhookOnStartup() {
 
     await registerTelegramWebhook(config.token, config.webhookUrl, config.webhookSecret);
     console.log(`Telegram webhook ready at ${config.webhookUrl}`);
+    // Native commands menu — best-effort, a failure here never blocks the webhook.
+    try {
+      await registerTelegramCommands(config.token);
+      console.log("Telegram commands menu registered");
+    } catch (error) {
+      console.error("Telegram commands registration skipped:", error instanceof Error ? error.message : error);
+    }
   } catch (error) {
     if (error instanceof Error && error.message.includes("TELEGRAM_BOT_TOKEN")) {
       return;

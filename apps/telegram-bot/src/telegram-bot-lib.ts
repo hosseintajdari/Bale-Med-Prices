@@ -1,9 +1,13 @@
 /**
  * Telegram bot library — thin client over the مد اگریگیتور pricing API.
  *
- * Twin of apps/bale-bot (same patterns, Telegram endpoints):
- * https://api.telegram.org/bot<token>/<method>. Inline keyboards +
- * callback_data + Markdown code spans behave exactly like the Bale twin.
+ * Native Telegram surface (F3), NOT a mechanical port of the Bale bot:
+ * the patient-facing texts and price rules are the shared product law
+ * (DECISIONS-REGISTRY), but the interface uses what Telegram itself
+ * offers — inline keyboards under the 64-byte callback_data hard limit,
+ * the bot commands menu, typing actions, callback alerts, and inline
+ * mode (@bot <drug> from any chat).
+ * https://api.telegram.org/bot<token>/<method>
  *
  * Privacy rule (حریم خصوصی صاحب): the bot NEVER reveals the owner's
  * identity — no name, no reference, no "built by". If asked "who owns
@@ -17,6 +21,11 @@ import {
   sourceLabelFa,
   toPersianDigits
 } from "../../../packages/domain/src/format-price.ts";
+import {
+  buildSelectionMessage,
+  type LookupResponse,
+  type SelectionBotMessage
+} from "../../../packages/domain/src/selection-client.ts";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 
@@ -59,7 +68,8 @@ export function buildStartReply(): TelegramMessage {
     text: [
       "به بات قیمت دارو خوش آمدید.",
       "",
-      "نام دارو را همین‌جا بفرستید — قیمت، منبع و تاریخش را می‌گیرید.",
+      "نام دارو را بفرستید تا قیمت رسمی‌اش را با تاریخ به‌روزرسانی ببینید.",
+      "فارسی یا لاتین، حتی با غلط املایی هم قبول است.",
       "مثلاً بنویسید: آموکسی‌سیلین ۵۰۰"
     ].join("\n")
   };
@@ -69,13 +79,29 @@ export function buildHelpReply(): TelegramMessage {
   return {
     text: [
       "راهنما:",
-      "• نام دارو را به فارسی یا انگلیسی بفرستید",
+      "• نام دارو را فارسی یا لاتین بفرستید — غلط املایی اشکالی ندارد",
+      "• اگر دارو پیدا نشد، نام لاتین روی جعبه را هم امتحان کنید",
       "• اگر نتیجه زیاد بود، با دکمه‌های «صفحه‌ی بعد / صفحه‌ی قبل» ورق بزنید",
-      "• برای فرستادن قیمت برای بیمار، همان پیام را فوروارد کنید — منبع و تاریخ داخلش هست",
+      "• تاریخ کنار هر قیمت، روز به‌روزرسانی همان قیمت است؛ اگر «کهنه» نوشته بود یعنی مدتی است به‌روز نشده",
       "• /start — شروع دوباره",
       "• /help — همین راهنما"
     ].join("\n")
   };
+}
+
+/** A photo is never met with silence: say plainly what the bot can and cannot do with it. */
+export function buildPhotoReply(): TelegramMessage {
+  return {
+    text: [
+      "عکس رسید.",
+      "فعلاً نمی‌توانم نام دارو را از روی عکس بخوانم؛ نام روی جعبه را بنویسید و بفرستید — فارسی یا لاتین."
+    ].join("\n")
+  };
+}
+
+/** Voice/sticker/file and any other non-text message. */
+export function buildNonTextReply(): TelegramMessage {
+  return { text: "برای استعلام قیمت، نام دارو را به‌صورت متن بفرستید." };
 }
 
 function itemTitle(item: PriceItem): string {
@@ -99,6 +125,61 @@ function stockLine(item: PriceItem): string | null {
 export const PAGE_SIZE = 5;
 
 /**
+ * Telegram's hard limit for callback_data: 64 BYTES (UTF-8), not chars.
+ * A keyboard carrying even one oversized button is rejected wholesale by
+ * the Bot API — the patient would get no answer at all. Every keyboard
+ * this bot sends passes the guard: oversized buttons are dropped, and a
+ * keyboard left empty is omitted entirely.
+ */
+export const CALLBACK_DATA_MAX_BYTES = 64;
+
+const utf8Encoder = new TextEncoder();
+
+export function callbackDataBytes(data?: string | null): number {
+  if (!data) {
+    return 0;
+  }
+  return utf8Encoder.encode(data).length;
+}
+
+export function fitsCallbackLimit(data?: string | null): boolean {
+  const bytes = callbackDataBytes(data);
+  return bytes > 0 && bytes <= CALLBACK_DATA_MAX_BYTES;
+}
+
+type InlineButton = { text: string; callback_data: string };
+
+export function guardInlineKeyboard(
+  keyboard: Array<Array<InlineButton>> | undefined
+): Array<Array<InlineButton>> | undefined {
+  if (!keyboard) {
+    return undefined;
+  }
+  const rows = keyboard
+    .map((row) => row.filter((button) => fitsCallbackLimit(button.callback_data)))
+    .filter((row) => row.length > 0);
+  return rows.length > 0 ? rows : undefined;
+}
+
+/** Selection menu from the shared ladder, with the Telegram guard applied. */
+export function buildGuardedSelectionMessage(response: LookupResponse): SelectionBotMessage {
+  const message = buildSelectionMessage(response);
+  const keyboard = guardInlineKeyboard(message.reply_markup?.inline_keyboard);
+  return keyboard
+    ? { ...message, reply_markup: { inline_keyboard: keyboard } }
+    : { text: message.text };
+}
+
+/** Priceless dropped; stale sunk below fresh, stably. Shared by chat + inline rendering. */
+function sortedValidItems(items: PriceItem[]): PriceItem[] {
+  return items
+    .filter((item) => Number(item.consumerUnitPrice) > 0)
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => Number(isStalePrice(a.item.crawledAt)) - Number(isStalePrice(b.item.crawledAt)) || a.index - b.index)
+    .map(({ item }) => item);
+}
+
+/**
  * One search → one paged message (owner order 2026-10-29: prev/next page
  * buttons replace the per-item copy buttons — the message itself is the
  * forwardable artifact, source and date inside it).
@@ -110,11 +191,7 @@ export const PAGE_SIZE = 5;
  * - Keyboard: a single row with «صفحه‌ی قبل» / «صفحه‌ی بعد» (pg:<n>).
  */
 export function buildPriceReply(items: PriceItem[], query: string, note?: string, page = 0): TelegramMessage {
-  const valid = items.filter((item) => Number(item.consumerUnitPrice) > 0);
-  const sorted = valid
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => Number(isStalePrice(a.item.crawledAt)) - Number(isStalePrice(b.item.crawledAt)) || a.index - b.index)
-    .map(({ item }) => item);
+  const sorted = sortedValidItems(items);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const current = Math.min(Math.max(0, page), totalPages - 1);
@@ -195,9 +272,10 @@ export function buildPriceReply(items: PriceItem[], query: string, note?: string
     keyboard.push(row);
   }
 
+  const guarded = guardInlineKeyboard(keyboard);
   return {
     text: lines.join("\n"),
-    reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined
+    reply_markup: guarded ? { inline_keyboard: guarded } : undefined
   };
 }
 
@@ -270,18 +348,118 @@ export async function editMessageText(
   return callTelegramApi(token, "editMessageText", body);
 }
 
-export async function answerCallbackQuery(token: string, callbackQueryId: string, text?: string) {
+export async function answerCallbackQuery(
+  token: string,
+  callbackQueryId: string,
+  text?: string,
+  options?: { show_alert?: boolean }
+) {
   const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
   if (text) {
     body.text = text;
   }
+  if (options?.show_alert) {
+    body.show_alert = true;
+  }
   return callTelegramApi(token, "answerCallbackQuery", body);
+}
+
+/** Native typing indicator — the patient sees the bot working, not silence. Best-effort. */
+export async function sendChatAction(token: string, chatId: string | number, action = "typing") {
+  return callTelegramApi(token, "sendChatAction", { chat_id: chatId, action });
+}
+
+/** The Telegram Menu button list (setMyCommands). Persian, patient wording. */
+export function buildBotCommands(): Array<{ command: string; description: string }> {
+  return [
+    { command: "start", description: "شروع — نام دارو را بفرستید" },
+    { command: "help", description: "راهنمای استفاده" }
+  ];
+}
+
+export async function registerTelegramCommands(token: string) {
+  return callTelegramApi(token, "setMyCommands", { commands: buildBotCommands() });
+}
+
+export interface InlineQueryResultArticle {
+  type: "article";
+  id: string;
+  title: string;
+  description?: string;
+  input_message_content: { message_text: string };
+}
+
+const INLINE_RESULT_LIMIT = 10;
+
+/**
+ * Inline mode (@BaleMedPricebot <drug> typed in ANY chat): each result is
+ * the same patient price block the chat flow sends — Rial first, update
+ * date inside — so a price shared inline is self-contained when forwarded.
+ */
+export function buildInlineResults(items: PriceItem[], query: string): InlineQueryResultArticle[] {
+  const sorted = sortedValidItems(items);
+  if (sorted.length === 0) {
+    return [
+      {
+        type: "article",
+        id: "nf",
+        title: "پیدا نشد",
+        description: "نام لاتین روی جعبه را امتحان کنید",
+        input_message_content: {
+          message_text: [
+            `برای «${query}» چیزی پیدا نشد.`,
+            "املا را بررسی کنید، یا نام لاتین روی جعبه را بفرستید."
+          ].join("\n")
+        }
+      }
+    ];
+  }
+  return sorted.slice(0, INLINE_RESULT_LIMIT).map((item, index) => ({
+    type: "article" as const,
+    id: `r${index}`,
+    title: itemTitle(item),
+    description: formatPriceFa(item.consumerUnitPrice ?? 0),
+    input_message_content: {
+      message_text: formatPriceBlock({
+        productName: itemTitle(item),
+        priceRial: item.consumerUnitPrice ?? 0,
+        sourceLabel: itemSourceLabel(item),
+        crawledAt: item.crawledAt
+      })
+    }
+  }));
+}
+
+/** Answer for an empty inline query: teach the gesture instead of silence. */
+export function buildInlineHintResult(): InlineQueryResultArticle {
+  return {
+    type: "article",
+    id: "hint",
+    title: "جستجوی قیمت دارو",
+    description: "نام دارو را بنویسید",
+    input_message_content: {
+      message_text: "نام دارو را بنویسید تا قیمت رسمی‌اش را با تاریخ به‌روزرسانی ببینید."
+    }
+  };
+}
+
+export async function answerInlineQuery(
+  token: string,
+  inlineQueryId: string,
+  results: InlineQueryResultArticle[]
+) {
+  return callTelegramApi(token, "answerInlineQuery", {
+    inline_query_id: inlineQueryId,
+    results,
+    cache_time: 60,
+    is_personal: true
+  });
 }
 
 export async function registerTelegramWebhook(token: string, webhookUrl: string, webhookSecret?: string) {
   const body: Record<string, unknown> = {
     url: webhookUrl,
-    allowed_updates: ["message", "callback_query"]
+    allowed_updates: ["message", "callback_query", "inline_query"]
   };
   if (webhookSecret) {
     body.secret_token = webhookSecret;
