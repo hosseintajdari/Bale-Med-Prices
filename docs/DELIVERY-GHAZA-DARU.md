@@ -7,7 +7,7 @@
 
 | Module | Patient-facing | Source |
 | --- | --- | --- |
-| pricing | Consumer unit price | Qanoon + TTAC |
+| pricing | Consumer unit price | Internal source + TTAC |
 | authenticity | Barcode verify | Ghaza Daru web |
 | drug-info | Medicine details | TTAC web |
 | rare-drug | Rare medicine search | TTAC web |

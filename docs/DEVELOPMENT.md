@@ -52,7 +52,7 @@ Both bots support polling and webhook modes:
 
 ## Local Reference Inputs
 
-`local-inputs/` can contain large or private Qanoon Pharma reference material.
+`local-inputs/` can contain large or private internal reference material.
 It is intentionally ignored by Git. If a decision depends on local reference
 material, summarize the decision in `docs/` instead of committing the source
 material.

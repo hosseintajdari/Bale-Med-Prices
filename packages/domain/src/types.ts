@@ -1,7 +1,7 @@
 export type DateString = `${number}-${number}-${number}`;
 
 export interface SourceReference {
-  key: "qanoon" | "ttac" | "payam-darousaz";
+  key: "internal" | "ttac" | "payam-darousaz";
   label: string;
   role: "pricing" | "reference" | "comparison";
   priority: number;

@@ -13,8 +13,8 @@
 9. Return a clear unit price answer for patients
 10. If quantity is provided, multiply from unit price to show optional total price
 11. Attach source hints and warnings when pricing confidence is limited
-12. When a derived `TTAC` unit price is available, show a patient-facing warning if it differs from the primary `Qanoon Pharma` consumer unit price by more than 10,000 rial per consumption unit
-13. Do not automatically replace the primary `Qanoon Pharma` unit price with a higher `TTAC`-derived unit price
+12. When a derived `TTAC` unit price is available, show a patient-facing warning if it differs from the primary internal consumer unit price by more than 10,000 rial per consumption unit
+13. Do not automatically replace the primary internal unit price with a higher `TTAC`-derived unit price
 
 ## Notes
 
@@ -59,6 +59,6 @@
 - Messaging bots should initially link to TTAC media rather than sending downloaded image files
 - `TTAC` package price can support unit-price comparison only when the package unit count can be confidently extracted
 - A higher `TTAC`-derived unit price is a warning signal, not the selected patient price by itself
-- Internal richer price logic can still come from `Qanoon`
+- Internal richer price logic can still come from the internal source
 - `Payam Darousaz` can be used as a comparison source in later phases
 - Internal cost and profit are not first-class outputs for patient channels

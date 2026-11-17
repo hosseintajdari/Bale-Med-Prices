@@ -30,7 +30,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-AMOX-500",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -59,7 +59,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-ADLT-CREAM",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -88,7 +88,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-LOS-50",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -118,7 +118,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-COUGH-120",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -147,7 +147,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-VIT-D3-1000",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -176,7 +176,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-ACET-500-TAB",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -205,7 +205,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-ACET-325-TAB",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -235,7 +235,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-ACET-325-SUP",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -265,7 +265,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-CHLOR-DROP-OPH",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -295,7 +295,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-CHLOR-OINT-OPH",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -325,7 +325,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-CHLOR-DROP-OTIC",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -355,7 +355,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-CHLOR-DROP-NASAL",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -384,7 +384,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-IBU-400-TAB",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -413,7 +413,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-IBU-400-CAP",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -443,7 +443,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-IBU-SYR",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -473,7 +473,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-IBU-SUP",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -503,7 +503,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-IBU-CREAM",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
@@ -532,7 +532,7 @@ export const goods: Good[] = [
     activeStatus: "active",
     ttacCode: "TTAC-IBU-INJ",
     sources: [
-      { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 },
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
