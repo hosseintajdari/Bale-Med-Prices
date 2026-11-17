@@ -1,5 +1,10 @@
 import { goodsRepository } from "../repositories/goods-repository.ts";
 import { aggregatorService } from "./aggregator/aggregator-service.ts";
+import {
+  normalizeUserQuery,
+  splitCompoundQuery,
+  normalizedFormOf
+} from "../search/query-normalization.ts";
 
 function toPatientSource(source) {
   return {
@@ -83,13 +88,53 @@ export const goodsService = {
    * labels. A web-only miss therefore reads as an honest total=0, not a 429.
    */
   async searchWithWebFallback(input) {
+    const rawQuery = input?.query ?? "";
+    const userQuery = normalizeUserQuery(rawQuery);
+
+    // Nothing drug-like remains (symbol/emoji/filler-only input): honest
+    // empty answer WITHOUT scanning the catalog or fanning out — those
+    // inputs were the Prime R2-5 hang class.
+    if (!userQuery) {
+      return { items: [], total: 0, webFallback: false };
+    }
+
     const local = this.search(input);
     if (local.items.length > 0) {
       return { ...local, webFallback: false };
     }
 
-    const query = (input?.query ?? "").trim();
-    const { hits, meta } = await aggregatorService.searchWebWithMeta(query);
+    // Conversational fallback: the raw sentence matched nothing, but its
+    // filler-stripped core («قیمت آموکسی‌سیلین چنده» → «آموکسی سیلین»)
+    // may be a plain catalog query.
+    if (userQuery !== normalizedFormOf(rawQuery)) {
+      const retried = this.search({ query: userQuery });
+      if (retried.items.length > 0) {
+        return { ...retried, webFallback: false };
+      }
+    }
+
+    // Compound fallback: two drugs in one question, merged per part.
+    // Runs only after the whole query missed, so real combination
+    // products are never split.
+    const parts = splitCompoundQuery(userQuery);
+    if (parts.length >= 2) {
+      const seen = new Set();
+      const merged = [];
+      for (const part of parts) {
+        const partResult = this.search({ query: part });
+        for (const item of partResult.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            merged.push(item);
+          }
+        }
+      }
+      if (merged.length > 0) {
+        return { items: merged.slice(0, 20), total: merged.length, webFallback: false };
+      }
+    }
+
+    const { hits, meta } = await aggregatorService.searchWebWithMeta(userQuery);
     const items = hits.map(toWebSearchItem);
 
     return {

@@ -1,5 +1,8 @@
 import { goodsService } from "../services/goods-service.ts";
 import { RateLimitedError } from "../services/aggregator/types.ts";
+import { withDeadline, DeadlineExceededError } from "../utils/deadline.ts";
+
+const SEARCH_DEADLINE_MS = Number(process.env.SEARCH_DEADLINE_MS ?? 8000);
 import {
   formatPriceBlock,
   toPersianDigits
@@ -82,7 +85,10 @@ export const goodsController = {
     const input = parseSearchRequest(request.url);
 
     try {
-      const searchResult = await goodsService.searchWithWebFallback({ query: input.query });
+      const searchResult = await withDeadline(
+        goodsService.searchWithWebFallback({ query: input.query }),
+        SEARCH_DEADLINE_MS
+      );
       const result =
         input.format === "telegram"
           ? toTelegramSearchResponse(searchResult, input.query)
@@ -92,6 +98,18 @@ export const goodsController = {
         "X-Search-Source": searchResult.webFallback ? "web-aggregator" : "catalog"
       });
     } catch (error) {
+      if (error instanceof DeadlineExceededError) {
+        // Absolute boundary cap (Prime R2-5): degrade to the honest
+        // not-found payload instead of holding the request open.
+        console.error(`search deadline exceeded for query: ${input.query}`);
+        const empty = { items: [], total: 0, webFallback: true, deadlineExceeded: true };
+        const result =
+          input.format === "telegram"
+            ? toTelegramSearchResponse(empty, input.query)
+            : { query: input.query, ...empty };
+        sendJson(response, 200, result, { "X-Search-Source": "deadline" });
+        return;
+      }
       if (error instanceof RateLimitedError) {
         sendJson(response, 429, {
           error: "A price source is rate-limiting us. Please retry shortly."
