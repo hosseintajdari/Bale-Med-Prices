@@ -19,6 +19,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, statSync } from "node:fs";
 import { normalizeSearchText } from "../../search/search-normalization.ts";
+import { isFuzzyCandidate, isIdentityToken } from "../../search/fuzzy-match.ts";
 import { matchScore } from "./delgarm-adapter.ts";
 import { tomanToRial, type PriceHit, type SourceAdapter } from "./types.ts";
 
@@ -83,9 +84,94 @@ export class DarukadeAdapter implements SourceAdapter {
   private readonly dbPath: string | undefined;
   private db: DatabaseSync | null = null;
   private dbMtimeMs = -1; // mtime of the file the open handle points at
+  private indexMtimeMs = -1; // mtime the brand/name index was built from
+  private brandIndex = new Set<string>();
+  private nameIndex = new Set<string>();
 
   constructor(dbPath?: string) {
     this.dbPath = dbPath ?? process.env.DARUKADE_DB_PATH;
+  }
+
+  /**
+   * Brand / bare-name index (F2, Prime R2-2/R2-6). The adapter's own
+   * search already scores brand_en correctly — Erikeh/Cerita prove it —
+   * but the caller (goods-service) only fans out to the web when the
+   * local catalog has NOTHING, so a single weak local hit used to shadow
+   * this catalog's whole brand family (Lafarrerr: 8 local items shown,
+   * 108 Darukade rows invisible). This index lets the caller ask "is
+   * this query a Darukade brand or bare product name?" and supplement.
+   * Built lazily from DISTINCT brand/name columns, cached per DB mtime,
+   * normalized both spaced («norm life») and joined («normlife»).
+   */
+  private buildIndex(db: DatabaseSync): void {
+    if (this.indexMtimeMs === this.dbMtimeMs) {
+      return;
+    }
+    const brands = new Set<string>();
+    const names = new Set<string>();
+    const add = (set: Set<string>, raw: unknown, withTokens = false) => {
+      const value = normalizeSearchText(typeof raw === "string" ? raw : "");
+      if (!value) {
+        return;
+      }
+      set.add(value);
+      const joined = value.replace(/\s+/g, "");
+      if (joined !== value) {
+        set.add(joined);
+      }
+      if (withTokens) {
+        // Brand stems: patients type «Trec», the catalog says «Trec
+        // Nutrition» — the stem alone must still trigger the supplement.
+        for (const token of value.split(" ")) {
+          if (token.length >= 4) {
+            set.add(token);
+          }
+        }
+      }
+    };
+    try {
+      const brandRows = db
+        .prepare("SELECT DISTINCT brand_en, brand_fa FROM darukade_products")
+        .all() as { brand_en: string | null; brand_fa: string | null }[];
+      for (const row of brandRows) {
+        add(brands, row.brand_en, true);
+        add(brands, row.brand_fa);
+      }
+      const nameRows = db
+        .prepare("SELECT DISTINCT name FROM darukade_products")
+        .all() as { name: string | null }[];
+      for (const row of nameRows) {
+        add(names, row.name);
+      }
+    } catch {
+      // A catalog without the expected shape indexes nothing; search
+      // keeps its own degrade-to-empty contract.
+      brands.clear();
+      names.clear();
+    }
+    this.brandIndex = brands;
+    this.nameIndex = names;
+    this.indexMtimeMs = this.dbMtimeMs;
+  }
+
+  /** True when the (normalized) query is a Darukade brand or bare product name. */
+  isIndexedQuery(normalizedQuery: string): boolean {
+    const db = this.open();
+    if (!db) {
+      return false;
+    }
+    this.buildIndex(db);
+    const query = normalizeSearchText(normalizedQuery ?? "");
+    if (!query) {
+      return false;
+    }
+    const joined = query.replace(/\s+/g, "");
+    return (
+      this.brandIndex.has(query) ||
+      this.nameIndex.has(query) ||
+      this.brandIndex.has(joined) ||
+      this.nameIndex.has(joined)
+    );
   }
 
   /**
@@ -173,16 +259,46 @@ export class DarukadeAdapter implements SourceAdapter {
       seenRows.add(key);
       return true;
     });
+    // Identity guard (F2): a hit must be carried by at least one IDENTITY
+    // token of the query (a drug/brand word — exact or Damerau≤1), never
+    // by form/unit words alone. matchScore's token recall let «شربت
+    // سیتریزین» surface unrelated syrups at 0.5 (شربت matched, the drug
+    // name matched nothing) — a wrong syrup with a real price is worse
+    // than an honest miss.
+    const identityTokens = tokens.filter((token) => isIdentityToken(token));
     const scored: { hit: PriceHit; score: number }[] = [];
     for (const row of rows) {
       const hit = rowToHit(row);
       if (!hit) {
         continue;
       }
+      if (identityTokens.length > 0) {
+        const rowTokens = new Set(
+          normalizeSearchText(
+            [row.name ?? "", row.variant_title ?? "", row.brand_en ?? "", row.brand_fa ?? ""].join(" ")
+          )
+            .split(" ")
+            .filter(Boolean)
+        );
+        const carried =
+          identityTokens.some(
+            (token) => rowTokens.has(token) || [...rowTokens].some((rt) => isFuzzyCandidate(token, rt))
+          ) ||
+          // Joined spelling: «La Farrerr» typed in two tokens, stored as
+          // one brand token «lafarrerr» — the concatenation must carry too.
+          rowTokens.has(identityTokens.join(""));
+        if (!carried) {
+          continue;
+        }
+      }
+      const joinedQuery = query.replace(/\s+/g, "");
       const score = Math.max(
         matchScore(query, row.name ?? ""),
         row.variant_title ? matchScore(query, `${row.name ?? ""} ${row.variant_title}`) : 0,
         row.brand_en ? matchScore(query, row.brand_en) : 0,
+        // Joined-brand form: the box says «La Farrerr» (two tokens), the
+        // catalog stores «Lafarrerr» (one) — score the spaceless pair too.
+        row.brand_en ? matchScore(joinedQuery, row.brand_en.replace(/\s+/g, "")) : 0,
         row.brand_fa ? matchScore(query, `${row.name ?? ""} ${row.brand_fa}`) : 0
       );
       if (score >= MATCH_THRESHOLD) {
