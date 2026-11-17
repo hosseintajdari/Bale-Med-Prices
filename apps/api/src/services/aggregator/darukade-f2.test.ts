@@ -100,6 +100,22 @@ test("darukade: two-token box spelling of a joined brand still scores the brand 
   }
 });
 
+test("darukade: form/unit-only queries name no product and return nothing", async () => {
+  // Review BLOCK (2026-11-17): the identity guard used to be skipped
+  // entirely when a query had no identity token, so «قرص» returned
+  // every tablet matchScore could recall. Zero identity → no hits.
+  const { dir, path } = makeFixtureDb();
+  const adapter = new DarukadeAdapter(path);
+  try {
+    assert.deepEqual(await adapter.search("قرص"), []);
+    assert.deepEqual(await adapter.search("میلی گرم 500"), []);
+    assert.deepEqual(await adapter.search("شربت"), []);
+  } finally {
+    adapter.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("darukade: alef-mismatched brand queries reach their rows in both directions", async () => {
   const { dir, path } = makeFixtureDb();
   const adapter = new DarukadeAdapter(path);
