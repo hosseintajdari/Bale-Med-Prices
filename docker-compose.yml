@@ -15,6 +15,7 @@ services:
       # scraper cron). Mounted READ-ONLY: the API never writes the catalog,
       # and no per-pharmacy data is ever mounted into this service.
       DARUKADE_DB_PATH: /app/data/scrapers/darukade.sqlite3
+      QANUN_GOODS_PATH: /app/data/scrapers/qanun-goods.json
     volumes:
-      - ${DARUKADE_DATA_DIR:-./data/scrapers}:/app/data/scrapers:ro
+      - ${DARUKADE_DATA_DIR:-/home/admin/scrapers/data}:/app/data/scrapers:ro
     restart: unless-stopped
