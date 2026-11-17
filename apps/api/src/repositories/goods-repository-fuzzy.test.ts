@@ -126,6 +126,19 @@ const catalog: Good[] = [
     unitLabel: "tablet",
     strengthLabel: "500MG",
     sellPrice: 27000
+  }),
+  good({
+    // Head token «کروم» sits Damerau-1 from the cream surface «کرم» —
+    // the form-correction pre-pass must never steal a real generic.
+    id: "chromium-tab",
+    persianTitle: "کروم 200میکروگرم - قرص",
+    title: "CHROMIUM 200MCG - TABLET",
+    englishTitle: "CHROMIUM 200MCG - TABLET",
+    aliases: ["کروم 200میکروگرم - قرص"],
+    dosageForm: "tablet",
+    unitLabel: "tablet",
+    strengthLabel: "200MCG",
+    sellPrice: 45000
   })
 ];
 const entries = catalog.map(buildSearchableEntry);
@@ -176,7 +189,28 @@ test("fuzzy form guard: «شربت سیتریزین» resolves to the cetirizine
   const { goods, fuzzy } = searchFuzzyEntries(entries, "شربت سیتریزین");
   assert.deepEqual(ids(goods), ["cet-syrup"]);
   assert.equal(fuzzy?.ambiguous, false);
-  assert.equal(fuzzy?.matchedTerm, "ستیریزین");
+  // matchedTerm is the full corrected query, token by token.
+  assert.equal(fuzzy?.matchedTerm, "شربت ستیریزین");
+});
+
+test("fuzzy: a head token is never stolen by the form-correction pre-pass («کروم قرث»)", () => {
+  // «کروم» heads the chromium title; only «قرث» may correct (→ قرص).
+  // The answer names the full corrected query, drug name included.
+  const { goods, fuzzy } = searchFuzzyEntries(entries, "کروم قرث");
+  assert.deepEqual(ids(goods), ["chromium-tab"]);
+  assert.equal(fuzzy?.ambiguous, false);
+  assert.equal(fuzzy?.matchedTerm, "کروم قرص");
+});
+
+test("fuzzy: a form word alone names no drug — zero-identity queries are honest misses", () => {
+  // Review BLOCK (2026-11-17): «قرث» used to return every tablet in
+  // the catalog (6,231 priced hits on the real catalog, 11.8s) named
+  // as the correction «قرص». A form is not an identity.
+  for (const query of ["قرث", "شربط", "قرث 500"]) {
+    const { goods, fuzzy } = searchFuzzyEntries(entries, query);
+    assert.deepEqual(goods, [], `query ${query} must not answer`);
+    assert.equal(fuzzy, null);
+  }
 });
 
 test("fuzzy strength guard: a stated strength that no candidate carries kills the match", () => {
