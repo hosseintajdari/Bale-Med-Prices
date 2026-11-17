@@ -46,7 +46,7 @@ function buildPricingText(result) {
   // the catalog item carries its snapshot time, that is what the reader
   // must see — defaulting to today's documentDate would claim the price
   // was updated today when it may be days old.
-  lines.push(formatUpdateLine(result.crawledAt ?? result.documentDate));
+  lines.push(formatUpdateLine(result.crawledAt || result.documentDate));
 
   if (result.warnings.length > 0) {
     lines.push(`هشدار: ${result.warnings.join(" | ")}`);

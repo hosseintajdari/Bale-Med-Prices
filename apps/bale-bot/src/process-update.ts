@@ -261,10 +261,16 @@ export async function processBaleUpdate(config: BotConfig, update: any) {
 
   if (typeof message.text !== "string") {
     // A patient who sends a photo of the box gets guidance, never silence.
-    const reply = Array.isArray(message.photo) && message.photo.length > 0
-      ? buildPhotoReply()
-      : buildNonTextReply();
-    await sendMessage(config.token, String(message.chat.id), reply);
+    // Service messages (joins, pins, …) carry none of these content keys
+    // and stay silent, as before.
+    const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
+    const hasOtherContent = ["voice", "video", "video_note", "sticker", "document", "animation", "audio", "contact", "location"]
+      .some((key) => message[key] !== undefined);
+    if (hasPhoto) {
+      await sendMessage(config.token, String(message.chat.id), buildPhotoReply());
+    } else if (hasOtherContent) {
+      await sendMessage(config.token, String(message.chat.id), buildNonTextReply());
+    }
     return;
   }
 
