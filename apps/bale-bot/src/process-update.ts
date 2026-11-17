@@ -15,6 +15,8 @@
 import {
   answerCallbackQuery,
   buildHelpReply,
+  buildNonTextReply,
+  buildPhotoReply,
   buildPriceReply,
   buildStartReply,
   extractCommand,
@@ -253,7 +255,16 @@ export async function processBaleUpdate(config: BotConfig, update: any) {
   }
 
   const message = update?.message;
-  if (message?.chat?.id === undefined || message?.chat?.id === null || typeof message.text !== "string") {
+  if (message?.chat?.id === undefined || message?.chat?.id === null) {
+    return;
+  }
+
+  if (typeof message.text !== "string") {
+    // A patient who sends a photo of the box gets guidance, never silence.
+    const reply = Array.isArray(message.photo) && message.photo.length > 0
+      ? buildPhotoReply()
+      : buildNonTextReply();
+    await sendMessage(config.token, String(message.chat.id), reply);
     return;
   }
 

@@ -108,9 +108,26 @@ test("parsePageCallback parses pg:<n> and rejects junk", () => {
 
 
 test("start/help replies are Persian and command-only", () => {
-  assert.ok(buildStartReply().text.includes("نام دارو را همین‌جا بفرستید"));
+  assert.ok(buildStartReply().text.includes("نام دارو را بفرستید"));
   const help = buildHelpReply().text;
   assert.ok(help.includes("/start"));
   assert.ok(help.includes("/help"));
   assert.ok(help.includes("صفحه‌ی بعد"));
+});
+
+test("start/help speak to the patient, not the pharmacist", () => {
+  const start = buildStartReply().text;
+  assert.ok(!start.includes("منبع"), "the price block shows the update date, not a source — do not promise one");
+  assert.ok(start.includes("غلط املایی"), "typo tolerance is part of the welcome");
+  const help = buildHelpReply().text;
+  assert.ok(!help.includes("برای بیمار"), "no pharmacist-forwarding talk in the patient surface");
+  assert.ok(help.includes("نام لاتین روی جعبه"));
+});
+
+test("photo and non-text replies are honest guidance, never silence", async () => {
+  const { buildPhotoReply, buildNonTextReply } = await import("./bale-bot-lib.ts");
+  const photo = buildPhotoReply().text;
+  assert.ok(photo.includes("عکس رسید"));
+  assert.ok(photo.includes("نمی‌توانم نام دارو را از روی عکس بخوانم"));
+  assert.ok(buildNonTextReply().text.includes("به‌صورت متن"));
 });

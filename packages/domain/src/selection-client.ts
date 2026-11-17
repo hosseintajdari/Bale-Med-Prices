@@ -175,9 +175,10 @@ export function buildFallbackText(response: LookupResponse, query: string): stri
   const q = (response.query ?? query ?? "").trim();
   switch (response.type) {
     case "not_found":
-      return [`برای «${q}» چیزی پیدا نشد.`, "نام را کامل‌تر بفرستید یا املا را بررسی کنید."].join(
-        "\n"
-      );
+      return [
+        `برای «${q}» چیزی پیدا نشد.`,
+        "املا را بررسی کنید، یا نام لاتین روی جعبه را بفرستید."
+      ].join("\n");
     case "refine_search":
       return "نتایج زیاد است؛ نام کامل‌تر یا دوز دارو را بفرستید تا دقیق پیدا شود.";
     case "expired_selection":
