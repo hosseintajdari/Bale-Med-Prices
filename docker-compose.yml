@@ -6,14 +6,16 @@ services:
     env_file:
       # Production keeps the real bot secrets in .secrets/ (server-local,
       # never in git); local dev uses the .env.* files. All optional —
-      # whichever exist are loaded.
-      - path: .secrets/telegram.env
-        required: false
-      - path: .secrets/bale.env
-        required: false
+      # whichever exist are loaded. Order matters: on duplicate keys the
+      # later file wins, so the production .secrets/ files come last and
+      # a stray legacy .env.* can never override them.
       - path: .env.telegram
         required: false
       - path: .env.bale
+        required: false
+      - path: .secrets/telegram.env
+        required: false
+      - path: .secrets/bale.env
         required: false
     environment:
       PORT: 4000

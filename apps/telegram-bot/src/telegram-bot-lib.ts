@@ -165,9 +165,16 @@ export function guardInlineKeyboard(
 export function buildGuardedSelectionMessage(response: LookupResponse): SelectionBotMessage {
   const message = buildSelectionMessage(response);
   const keyboard = guardInlineKeyboard(message.reply_markup?.inline_keyboard);
-  return keyboard
-    ? { ...message, reply_markup: { inline_keyboard: keyboard } }
-    : { text: message.text };
+  if (keyboard) {
+    return { ...message, reply_markup: { inline_keyboard: keyboard } };
+  }
+  // Every button was oversized and dropped: the choices lived only in the
+  // buttons, so a bare prompt would strand the patient — tell them the
+  // way back in instead.
+  const hadButtons = (message.reply_markup?.inline_keyboard ?? []).length > 0;
+  return {
+    text: hadButtons ? `${message.text}\nنام دارو را دوباره بفرستید.` : message.text
+  };
 }
 
 /** Priceless dropped; stale sunk below fresh, stably. Shared by chat + inline rendering. */
@@ -440,6 +447,22 @@ export function buildInlineHintResult(): InlineQueryResultArticle {
     input_message_content: {
       message_text: "نام دارو را بنویسید تا قیمت رسمی‌اش را با تاریخ به‌روزرسانی ببینید."
     }
+  };
+}
+
+/** A single text article — used for honest inline errors and ladder outcomes. */
+export function buildInlineTextResult(
+  id: string,
+  title: string,
+  text: string,
+  description?: string
+): InlineQueryResultArticle {
+  return {
+    type: "article",
+    id,
+    title,
+    description,
+    input_message_content: { message_text: text }
   };
 }
 

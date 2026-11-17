@@ -209,6 +209,43 @@ test("bot commands menu lists /start and /help in Persian", async () => {
   }
 });
 
+test("guarded selection message with every button dropped tells the patient to retype (review F4)", async () => {
+  const { buildGuardedSelectionMessage } = await import("./telegram-bot-lib.ts");
+  const message = buildGuardedSelectionMessage({
+    type: "needs_form_selection",
+    query: "دارو",
+    selection: {
+      kind: "single_choice",
+      prompt: "فرم دارو را انتخاب کنید",
+      sessionId: "sel-1",
+      choices: [{ id: "x".repeat(80), label: "خراب" }]
+    }
+  } as any);
+  assert.equal(message.reply_markup, undefined);
+  assert.ok(message.text.includes("نام دارو را دوباره بفرستید"));
+});
+
+test("registration payloads: setMyCommands shape + webhook allowed_updates include inline_query (review T2)", async () => {
+  const lib = await import("./telegram-bot-lib.ts");
+  const calls: Array<{ url: string; body: any }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: any, opts: any) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: true }) } as any;
+  }) as any;
+  try {
+    await lib.registerTelegramCommands("tok");
+    await lib.registerTelegramWebhook("tok", "https://example.test/telegram/webhook", "sec");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.ok(calls[0].url.endsWith("/setMyCommands"));
+  assert.deepEqual(calls[0].body.commands.map((c: any) => c.command), ["start", "help"]);
+  assert.ok(calls[1].url.endsWith("/setWebhook"));
+  assert.ok(calls[1].body.allowed_updates.includes("inline_query"));
+  assert.equal(calls[1].body.secret_token, "sec");
+});
+
 test("inline results carry the same price block and drop priceless items", async () => {
   const { buildInlineResults } = await import("./telegram-bot-lib.ts");
   const results = buildInlineResults(sampleItems, "آموکسی");

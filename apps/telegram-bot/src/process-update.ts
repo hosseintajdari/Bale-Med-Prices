@@ -21,6 +21,7 @@ import {
   buildHelpReply,
   buildInlineHintResult,
   buildInlineResults,
+  buildInlineTextResult,
   buildNonTextReply,
   buildPhotoReply,
   buildPriceReply,
@@ -82,13 +83,17 @@ async function processPageCallback(
 ) {
   const page = parsePageCallback(data);
   const search = recallResults(chatId);
-  await answerCallbackQuery(config.token, callbackQueryId);
   if (page === null || !search) {
-    await sendMessage(config.token, chatId, {
-      text: "این جستجو قدیمی شده؛ نام دارو را دوباره بفرستید."
-    });
+    // Expired page button: a native alert is the whole answer — no extra message.
+    await answerCallbackQuery(
+      config.token,
+      callbackQueryId,
+      "این جستجو قدیمی شده؛ نام دارو را دوباره بفرستید.",
+      { show_alert: true }
+    );
     return;
   }
+  await answerCallbackQuery(config.token, callbackQueryId);
   const message = buildPriceReply(search.items, search.query, undefined, page);
   if (messageId !== undefined) {
     try {
@@ -236,12 +241,9 @@ async function processTextMessage(config: BotConfig, chatId: string, text: strin
     return;
   }
 
-  // Native typing indicator while the search runs — best-effort, never fatal.
-  try {
-    await sendChatAction(config.token, chatId, "typing");
-  } catch {
-    // A failed typing action must never cost the patient the answer.
-  }
+  // Native typing indicator while the search runs — fire-and-forget: a
+  // slow or hung Telegram call must never delay the answer (8s ceiling).
+  void sendChatAction(config.token, chatId, "typing").catch(() => {});
 
   const served = await runAggregatorPriceFlow(config, chatId, query);
   if (!served) {
@@ -252,10 +254,13 @@ async function processTextMessage(config: BotConfig, chatId: string, text: strin
 }
 
 /**
- * Inline mode: @BaleMedPricebot <drug> typed in any chat. Answers with
- * price articles built from the same search flow; an empty query teaches
- * the gesture. Never throws into the webhook handler — on any failure the
- * inline query is answered empty so Telegram stops its spinner.
+ * Inline mode: @BaleMedPricebot <drug> typed in any chat. Same retrieval
+ * honesty as the chat flow: a zero from the aggregator climbs the lookup
+ * ladder (resolved → canonical re-search; selection step → the choices as
+ * text with a pointer to the bot, since inline articles cannot run the
+ * callback ladder; not-found/refine → the shared fallback text), and an
+ * infrastructure error is answered as an error — never dressed up as
+ * «پیدا نشد». Never throws into the webhook handler.
  */
 async function processInlineQuery(config: BotConfig, inlineQuery: any) {
   const query = String(inlineQuery?.query ?? "").trim();
@@ -264,13 +269,75 @@ async function processInlineQuery(config: BotConfig, inlineQuery: any) {
       await answerInlineQuery(config.token, inlineQuery.id, [buildInlineHintResult()]);
       return;
     }
-    let items: PriceItem[] = [];
+
+    let items: PriceItem[];
     try {
       items = await fetchPriceSearch(config.apiBaseUrl, query);
-    } catch {
-      items = [];
+    } catch (error) {
+      const text =
+        error instanceof RateLimitedError
+          ? "منبع قیمت ما را محدود کرد؛ چند دقیقه دیگر تلاش کنید."
+          : "خطا در استعلام قیمت. دوباره تلاش کنید.";
+      await answerInlineQuery(config.token, inlineQuery.id, [
+        buildInlineTextResult("err", "خطا در استعلام", text)
+      ]);
+      return;
     }
-    await answerInlineQuery(config.token, inlineQuery.id, buildInlineResults(items, query));
+
+    if (items.length > 0) {
+      await answerInlineQuery(config.token, inlineQuery.id, buildInlineResults(items, query));
+      return;
+    }
+
+    // Aggregator zero — climb the same ladder the chat flow climbs.
+    let lookup: LookupResponse;
+    try {
+      lookup = await fetchLookup(config.apiBaseUrl, query);
+    } catch (error) {
+      const text =
+        error instanceof LookupRateLimitedError
+          ? "درخواست‌ها محدود شدند؛ چند دقیقه دیگر تلاش کنید."
+          : "خطا در استعلام. دوباره تلاش کنید.";
+      await answerInlineQuery(config.token, inlineQuery.id, [
+        buildInlineTextResult("err", "خطا در استعلام", text)
+      ]);
+      return;
+    }
+
+    if (lookup.type === "resolved") {
+      const canonical = canonicalTitleForResolved(lookup);
+      const title = canonical || query;
+      let retryItems: PriceItem[] = [];
+      try {
+        retryItems = await fetchPriceSearch(config.apiBaseUrl, title);
+      } catch {
+        retryItems = [];
+      }
+      if (retryItems.length > 0) {
+        await answerInlineQuery(config.token, inlineQuery.id, buildInlineResults(retryItems, title));
+      } else if (lookup.text) {
+        await answerInlineQuery(config.token, inlineQuery.id, [
+          buildInlineTextResult("cat", title, lookup.text)
+        ]);
+      } else {
+        await answerInlineQuery(config.token, inlineQuery.id, buildInlineResults([], query));
+      }
+      return;
+    }
+
+    if (isSelectionStep(lookup.type)) {
+      const message = buildGuardedSelectionMessage(lookup);
+      const labels = (lookup.selection?.choices ?? []).map((choice) => `• ${choice.label}`);
+      const text = [message.text, ...labels, "", "برای انتخاب، در خودِ بات ادامه دهید."].join("\n");
+      await answerInlineQuery(config.token, inlineQuery.id, [
+        buildInlineTextResult("sel", "چند گزینه پیدا شد", text)
+      ]);
+      return;
+    }
+
+    await answerInlineQuery(config.token, inlineQuery.id, [
+      buildInlineTextResult("fb", "نتیجه", buildFallbackText(lookup, query))
+    ]);
   } catch {
     try {
       await answerInlineQuery(config.token, inlineQuery.id, []);
