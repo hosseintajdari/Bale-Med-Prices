@@ -212,6 +212,34 @@ test("darukade adapter finds a brand stored without آ from a query typed with �
   }
 });
 
+test("darukade adapter finds a brand stored WITH آ from queries typed with or without آ", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "darukade-alef2-"));
+  const path = join(dir, "darukade.sqlite3");
+  const db = new DatabaseSync(path);
+  db.exec(`CREATE TABLE darukade_products (
+    url TEXT NOT NULL, variant_idx INTEGER NOT NULL, name TEXT,
+    variant_title TEXT, brand_fa TEXT, brand_en TEXT, product_code TEXT,
+    price_toman INTEGER, original_price_toman INTEGER, discount_percent INTEGER,
+    in_stock INTEGER, store_count INTEGER, expiration TEXT,
+    fetched_at TEXT NOT NULL, PRIMARY KEY (url, variant_idx))`);
+  db.prepare(
+    `INSERT INTO darukade_products (url, variant_idx, name, variant_title, brand_fa, brand_en, price_toman, fetched_at)
+     VALUES (?, 0, ?, ?, ?, ?, ?, '2026-10-15T06:14:50+00:00')`
+  ).run("https://darukade.com/p/10", "مکمل آهن کودکان", null, "آبادیس دارو", "Abadis", 300000);
+  db.close();
+  const adapter = new DarukadeAdapter(path);
+  try {
+    // Regression (review BLOCK on the آ fold): the fold normalizes the
+    // query to «ابادیس»; the stored row keeps «آبادیس» — the SQL probe
+    // must generate the آ spelling or the row is never pulled.
+    assert.equal((await adapter.search("آبادیس")).length, 1, "query typed with آ must find the آ-stored brand");
+    assert.equal((await adapter.search("ابادیس")).length, 1, "query typed without آ must find it too");
+  } finally {
+    adapter.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("darukade adapter disables itself when the DB is missing", async () => {
   const adapter = new DarukadeAdapter("/nonexistent/darukade.sqlite3");
   assert.equal(await adapter.health(), false);

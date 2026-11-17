@@ -67,14 +67,34 @@ function likeEscape(token: string): string {
 }
 
 /**
- * Probe forms for one token: the normalized form plus its Arabic-letter
- * variant (ی→ي، ک→ك), because catalog text is stored raw while queries are
- * normalized — the SQL pull must not miss rows the scorer would accept.
+ * Probe forms for one token: the normalized form plus the raw-spelling
+ * variants the stored catalog may carry, because catalog text is stored
+ * raw while queries are normalized — the SQL pull must not miss rows
+ * the scorer would accept:
+ * - Arabic letters (ی→ي، ک→ك).
+ * - آ spellings: normalizeSearchText folds آ→ا on the query side, but
+ *   stored text keeps its آ (thousands of brand/name rows). Without
+ *   آ-probes the fold would split pairs that matched before it
+ *   (review BLOCK on ea4e2f8: «آبادیس» 3→0). Generate the word-initial
+ *   and the all-positions ا→آ variants; the scorer folds both sides,
+ *   so over-pulling is harmless and under-pulling is the only sin.
  */
 function probeForms(token: string): string[] {
-  const forms = new Set<string>([token]);
-  const arabic = token.replace(/ی/g, "ي").replace(/ک/g, "ك");
-  forms.add(arabic);
+  const forms = new Set<string>();
+  const alefVariants = (t: string): string[] => {
+    const out = new Set<string>([t]);
+    if (t.startsWith("ا")) {
+      out.add("آ" + t.slice(1));
+    }
+    if (t.includes("ا")) {
+      out.add(t.replace(/ا/g, "آ"));
+    }
+    return [...out];
+  };
+  for (const variant of alefVariants(token)) {
+    forms.add(variant);
+    forms.add(variant.replace(/ی/g, "ي").replace(/ک/g, "ك"));
+  }
   return [...forms];
 }
 
