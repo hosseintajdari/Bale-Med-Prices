@@ -6,8 +6,11 @@ import { normalizeSearchText, tokenizeSearchText } from "./search-normalization.
  * catalog contains no product named «چنده», so an unstripped sentence
  * matches nothing (Prime QA round 2, class A10: 0/8). These tokens carry
  * no product identity and are dropped before matching. Deliberately NOT
- * included: «چند» (can belong to a strength/count question) and any token
- * that appears inside product names.
+ * included: «چند» (can belong to a strength/count question). Known
+ * tradeoff: «من»/«می»/«برای» also occur inside a few product names
+ * («اکتی من», «بیوتی می», «… برای سوسپانسیون») — safe because the raw
+ * query always searches first; stripping only shapes the RETRY query,
+ * where the pronoun reading is the common one.
  */
 const FILLER_TOKENS = new Set([
   "قیمت",

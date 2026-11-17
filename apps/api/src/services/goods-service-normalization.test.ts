@@ -31,6 +31,19 @@ test("two-drug question returns items for both drugs", async () => {
   assert.ok(ids.has("g-1006"), "acetaminophen missing");
 });
 
+test("split does not pre-empt the web fallback when a part misses locally (review B1)", async () => {
+  // «استامینوفن» hits locally, «فلانچیز» hits nothing: the split must NOT
+  // answer from the one-sided merge; the query falls through to the web
+  // fallback exactly as it did before the split existed.
+  const result = await goodsService.searchWithWebFallback({ query: "استامینوفن و فلانچیز" });
+  assert.equal(result.webFallback, true);
+});
+
+test("split answer keeps the total == items.length invariant", async () => {
+  const result = await goodsService.searchWithWebFallback({ query: "آموکسی‌سیلین و استامینوفن" });
+  assert.equal(result.total, result.items.length);
+});
+
 test("plain query behavior is unchanged", async () => {
   const result = await goodsService.searchWithWebFallback({ query: "آموکسی‌سیلین" });
   assert.ok(result.total >= 1);

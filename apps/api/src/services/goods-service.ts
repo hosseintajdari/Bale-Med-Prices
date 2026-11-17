@@ -115,13 +115,21 @@ export const goodsService = {
 
     // Compound fallback: two drugs in one question, merged per part.
     // Runs only after the whole query missed, so real combination
-    // products are never split.
+    // products are never split. The split answer pre-empts the web
+    // fallback ONLY when every part hit locally — otherwise a single
+    // product whose name contains «و» («لوسیون دست و بدن») would be
+    // shadowed by generic local matches on one part («بدن») and never
+    // reach the web catalog that actually carries it (review B1).
     const parts = splitCompoundQuery(userQuery);
     if (parts.length >= 2) {
       const seen = new Set();
       const merged = [];
+      let everyPartHit = true;
       for (const part of parts) {
         const partResult = this.search({ query: part });
+        if (partResult.items.length === 0) {
+          everyPartHit = false;
+        }
         for (const item of partResult.items) {
           if (!seen.has(item.id)) {
             seen.add(item.id);
@@ -129,8 +137,8 @@ export const goodsService = {
           }
         }
       }
-      if (merged.length > 0) {
-        return { items: merged.slice(0, 20), total: merged.length, webFallback: false };
+      if (everyPartHit && merged.length > 0) {
+        return { items: merged, total: merged.length, webFallback: false };
       }
     }
 
