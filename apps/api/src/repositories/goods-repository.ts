@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { goods as mockGoods } from "../data/mock-data.ts";
 import type { Good } from "../../../../packages/domain/src/types.ts";
 
@@ -18,10 +18,10 @@ function loadGoods(): Good[] {
 }
 
 // REST complement channel (read-only): a separate dataset pulled over the
-// vendor REST API by rest_cycle.py. It is merged FILL-ONLY — an item is
-// appended only when neither its numeric code nor its normalized title
-// exists in the primary (token-channel) catalog, so a REST price can
-// never override a token-channel price. A missing or malformed REST file
+// vendor REST API by rest_cycle.py. Merge order follows snapshot
+// freshness: a NEWER REST snapshot updates prices of code-matched items
+// (identity stays primary) and appends items the primary lacks; an older
+// or undated REST snapshot is fill-only. A missing or malformed REST file
 // is not an error: the primary catalog is served alone, silently.
 export function sanitizeRestGoods(parsed: unknown): Good[] {
   if (!Array.isArray(parsed)) return [];
@@ -98,16 +98,73 @@ function loadRestGoods(): Good[] {
   return [];
 }
 
-export function mergeRestComplement(base: Good[], rest: Good[]): Good[] {
+export interface ComplementFreshness {
+  /** Snapshot time (ms) of the primary catalog file. */
+  baseAt?: number;
+  /** Snapshot time (ms) of the REST dataset (meta pulled_at, else file mtime). */
+  restAt?: number;
+}
+
+export function mergeRestComplement(base: Good[], rest: Good[], freshness: ComplementFreshness = {}): Good[] {
   if (rest.length === 0) return base;
-  const codes = new Set<string>();
-  const titles = new Set<string>();
   const keyOf = (good: Good) => (good.internalCode || "").trim();
   const titleKeysOf = (good: Good) =>
     [good.persianTitle, good.title, good.englishTitle]
       .map((t) => normalizeSearchText(t || ""))
       .filter((t) => t.length > 0);
-  for (const good of base) {
+
+  // Freshness order (owner's strategy): when the REST snapshot is NEWER
+  // than the primary snapshot, code-matched items take the REST price —
+  // the identity (titles, codes) always stays with the primary item, and
+  // title-only matches are never price-swapped (identity ambiguity).
+  // Otherwise the merge is fill-only, exactly as before.
+  const restFresher =
+    typeof freshness.restAt === "number" &&
+    typeof freshness.baseAt === "number" &&
+    freshness.restAt > freshness.baseAt;
+  let effectiveBase = base;
+  if (restFresher) {
+    // The vendor data contains duplicate codes (the same numeric code on
+    // two different records). Group candidates per code and disambiguate
+    // by title: a candidate whose normalized title matches the base item
+    // wins; only when none matches does the first candidate apply.
+    const restByCode = new Map<string, Good[]>();
+    for (const good of rest) {
+      const code = keyOf(good);
+      if (!code) continue;
+      const list = restByCode.get(code);
+      if (list) list.push(good);
+      else restByCode.set(code, [good]);
+    }
+    const pickCandidate = (baseGood: Good, candidates: Good[]): Good => {
+      if (candidates.length === 1) return candidates[0];
+      const baseTitles = new Set(titleKeysOf(baseGood));
+      return candidates.find((c) => titleKeysOf(c).some((t) => baseTitles.has(t))) ?? candidates[0];
+    };
+    let overrides = 0;
+    effectiveBase = base.map((good) => {
+      const code = keyOf(good);
+      const candidates = code ? restByCode.get(code) : undefined;
+      const fresher = candidates ? pickCandidate(good, candidates) : undefined;
+      if (!fresher || fresher.sellPrice === good.sellPrice) return good;
+      overrides++;
+      const lo = Math.min(good.sellPrice, fresher.sellPrice);
+      const hi = Math.max(good.sellPrice, fresher.sellPrice);
+      if (lo > 0 && hi / lo > 5) {
+        // Observability only: a >5x cross-channel delta is worth a human
+        // look later; the freshness rule still applies.
+        console.warn(`[goods] REST price override code=${code} ratio=${(hi / lo).toFixed(1)}`);
+      }
+      return { ...good, sellPrice: fresher.sellPrice, crawledAt: fresher.crawledAt ?? good.crawledAt };
+    });
+    if (overrides > 0) {
+      console.log(`[goods] REST fresher: ${overrides} prices updated from REST snapshot`);
+    }
+  }
+
+  const codes = new Set<string>();
+  const titles = new Set<string>();
+  for (const good of effectiveBase) {
     const code = keyOf(good);
     if (code) codes.add(code);
     for (const t of titleKeysOf(good)) titles.add(t);
@@ -126,15 +183,54 @@ export function mergeRestComplement(base: Good[], rest: Good[]): Good[] {
     for (const t of tks) titles.add(t);
   }
   if (additions.length > 0) {
-    console.log(`[goods] REST complement: +${additions.length} items over base ${base.length}`);
+    console.log(`[goods] REST complement: +${additions.length} items over base ${effectiveBase.length}`);
   }
-  return additions.length > 0 ? [...base, ...additions] : base;
+  if (additions.length > 0) return [...effectiveBase, ...additions];
+  return effectiveBase;
 }
 
-const baseGoods: Good[] = loadGoods();
+function fileTimeMs(path: string | undefined): number | undefined {
+  if (!path) return undefined;
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
+
+function restPulledAtMs(restPath: string | undefined): number | undefined {
+  if (!restPath) return undefined;
+  const metaPath = restPath.replace(/rest-goods\.json$/, "rest-goods-meta.json");
+  if (metaPath !== restPath) {
+    try {
+      const meta = JSON.parse(readFileSync(metaPath, "utf8")) as { pulled_at?: string };
+      const ms = meta.pulled_at ? Date.parse(meta.pulled_at) : NaN;
+      if (!Number.isNaN(ms)) return ms;
+    } catch {
+      // fall through to the dataset's own mtime
+    }
+  }
+  return fileTimeMs(restPath);
+}
+
+function stampMissing(items: Good[], atMs: number | undefined): Good[] {
+  if (typeof atMs !== "number") return items;
+  const iso = new Date(atMs).toISOString();
+  if (items.every((g) => g.crawledAt)) return items;
+  return items.map((g) => (g.crawledAt ? g : { ...g, crawledAt: iso }));
+}
+
+const baseGoodsRaw: Good[] = loadGoods();
+const restGoodsRaw: Good[] = loadRestGoods();
+const baseAtMs = fileTimeMs(process.env.QANUN_GOODS_PATH);
+const restAtMs = restGoodsRaw.length > 0 ? restPulledAtMs(process.env.REST_GOODS_PATH) : undefined;
+const baseGoods: Good[] = stampMissing(baseGoodsRaw, baseAtMs);
 let goods: Good[] = baseGoods;
 try {
-  goods = mergeRestComplement(baseGoods, loadRestGoods());
+  goods = mergeRestComplement(baseGoods, stampMissing(restGoodsRaw, restAtMs), {
+    baseAt: baseAtMs,
+    restAt: restAtMs,
+  });
 } catch {
   // A malformed complement must never take the primary catalog down.
   goods = baseGoods;

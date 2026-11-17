@@ -33,6 +33,7 @@ function toPatientSearchItem(good) {
     consumerUnitPrice: good.sellPrice || good.tempPrice || 0,
     countInPackage: good.countInPackage,
     brand: good.brand,
+    crawledAt: good.crawledAt,
     sources: good.sources.map(toPatientSource)
   };
 }

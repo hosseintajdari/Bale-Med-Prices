@@ -107,6 +107,55 @@ test("sanitize fully defaults a sparse entry so unguarded downstream reads are s
   assert.doesNotThrow(() => g.sources.map((s) => s));
 });
 
+test("fresher REST snapshot updates the price of a code-matched item, identity stays primary", () => {
+  const rest = [good({ id: "r-f1", internalCode: "6534", persianTitle: "عنوان دیگر", sellPrice: 1500, crawledAt: "2026-11-17T10:00:00Z" })];
+  const merged = mergeRestComplement(base, rest, { baseAt: 1000, restAt: 2000 });
+  const item = merged.find((g) => g.internalCode === "6534");
+  assert.equal(item?.sellPrice, 1500);
+  assert.equal(item?.persianTitle, "شربت پدیاکید", "identity must stay with the primary item");
+  assert.equal(item?.crawledAt, "2026-11-17T10:00:00Z");
+  assert.equal(merged.length, 2, "no append for a matched item");
+});
+
+test("older REST snapshot never overrides — fill-only", () => {
+  const rest = [good({ id: "r-f2", internalCode: "6534", persianTitle: "شربت پدیاکید", sellPrice: 1500 })];
+  const merged = mergeRestComplement(base, rest, { baseAt: 2000, restAt: 1000 });
+  assert.equal(merged.find((g) => g.internalCode === "6534")?.sellPrice, 1000);
+});
+
+test("missing timestamps mean fill-only, never override", () => {
+  const rest = [good({ id: "r-f3", internalCode: "6534", persianTitle: "شربت پدیاکید", sellPrice: 1500 })];
+  assert.equal(mergeRestComplement(base, rest).find((g) => g.internalCode === "6534")?.sellPrice, 1000);
+  assert.equal(mergeRestComplement(base, rest, { restAt: 9999 }).find((g) => g.internalCode === "6534")?.sellPrice, 1000);
+});
+
+test("title-only match is never price-swapped, even when REST is fresher", () => {
+  const rest = [good({ id: "r-f4", internalCode: "424242", persianTitle: "قرص استامینوفن", sellPrice: 9999 })];
+  const merged = mergeRestComplement(base, rest, { baseAt: 1000, restAt: 2000 });
+  assert.equal(merged.find((g) => g.internalCode === "111")?.sellPrice, 2000);
+  assert.equal(merged.length, 2, "title-matched REST item is not appended either");
+});
+
+test("duplicate REST codes are disambiguated by title before any price swap", () => {
+  // Vendor reality: two REST records share one code with different prices.
+  const rest = [
+    good({ id: "r-d1", internalCode: "111", persianTitle: "محصول دیگر", sellPrice: 555 }),
+    good({ id: "r-d2", internalCode: "111", persianTitle: "قرص استامینوفن", sellPrice: 777 }),
+  ];
+  const merged = mergeRestComplement(base, rest, { baseAt: 1000, restAt: 2000 });
+  assert.equal(merged.find((g) => g.internalCode === "111")?.sellPrice, 777,
+    "the title-matching candidate must win over the first candidate");
+});
+
+test("duplicate REST codes with no title match fall back to the first candidate", () => {
+  const rest = [
+    good({ id: "r-d3", internalCode: "111", persianTitle: "نام الف", sellPrice: 555 }),
+    good({ id: "r-d4", internalCode: "111", persianTitle: "نام ب", sellPrice: 777 }),
+  ];
+  const merged = mergeRestComplement(base, rest, { baseAt: 1000, restAt: 2000 });
+  assert.equal(merged.find((g) => g.internalCode === "111")?.sellPrice, 555);
+});
+
 test("sanitize cleans sources ELEMENTS — [null] can never reach toPatientSource", () => {
   const cleaned = sanitizeRestGoods([{
     id: "r-3", internalCode: "888006", persianTitle: "کالای منبع‌دار",
