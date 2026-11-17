@@ -24,6 +24,45 @@ import {
 const BASE = "https://www.delgarm.com";
 const MATCH_THRESHOLD = 0.55;
 
+/**
+ * Discovery circuit breaker (issue #54): DDG site: discovery has
+ * returned zero candidates from this network since 2026-10 — every
+ * local-miss query still paid ~7s of sequential discovery fetches for
+ * delgarm's zero. After `threshold` consecutive zero-candidate
+ * discoveries, discovery is muted for `cooldownMs`; delgarm's own
+ * internal search (one fetch) keeps running as the canary, and any
+ * discovery that yields a candidate resets the streak.
+ */
+export class DiscoveryBreaker {
+  private zeroStreak = 0;
+  private mutedUntil = 0;
+  private readonly threshold: number;
+  private readonly cooldownMs: number;
+  private readonly now: () => number;
+
+  constructor(threshold = 3, cooldownMs = 30 * 60 * 1000, now: () => number = () => Date.now()) {
+    this.threshold = threshold;
+    this.cooldownMs = cooldownMs;
+    this.now = now;
+  }
+
+  shouldSkip(): boolean {
+    return this.now() < this.mutedUntil;
+  }
+
+  record(candidateCount: number): void {
+    if (candidateCount > 0) {
+      this.zeroStreak = 0;
+      return;
+    }
+    this.zeroStreak += 1;
+    if (this.zeroStreak >= this.threshold) {
+      this.mutedUntil = this.now() + this.cooldownMs;
+      this.zeroStreak = 0;
+    }
+  }
+}
+
 interface PriceRow {
   name: string;
   priceToman: number;
@@ -99,6 +138,7 @@ async function getText(url: string): Promise<string> {
 
 export class DelgarmAdapter implements SourceAdapter {
   readonly name = "delgarm";
+  private readonly discoveryBreaker = new DiscoveryBreaker();
 
   private async candidatePages(product: string): Promise<string[]> {
     const urls: string[] = [];
@@ -110,15 +150,20 @@ export class DelgarmAdapter implements SourceAdapter {
       }
     };
 
-    // Path 1: web discovery.
-    try {
-      for (const url of await discover(product, { site: "delgarm.com", maxResults: 8 })) {
-        add(url);
+    // Path 1: web discovery (muted by the breaker while it keeps
+    // returning nothing — see DiscoveryBreaker).
+    if (!this.discoveryBreaker.shouldSkip()) {
+      const before = urls.length;
+      try {
+        for (const url of await discover(product, { site: "delgarm.com", maxResults: 8 })) {
+          add(url);
+        }
+      } catch (error) {
+        if (error instanceof RateLimitedError) {
+          throw error;
+        }
       }
-    } catch (error) {
-      if (error instanceof RateLimitedError) {
-        throw error;
-      }
+      this.discoveryBreaker.record(urls.length - before);
     }
 
     // Path 2: delgarm's own internal search.

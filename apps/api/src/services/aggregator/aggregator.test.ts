@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { politeFetch, resetPolitenessForTest } from "./http.ts";
 import { buildQueries, extractUrls } from "./google-discovery.ts";
 import { hitFromApiItem } from "./torob-adapter.ts";
-import { parseRows, matchScore } from "./delgarm-adapter.ts";
+import { parseRows, matchScore, DiscoveryBreaker } from "./delgarm-adapter.ts";
 import { aggregatorService, resetWebCacheForTest, searchWithAdapters } from "./aggregator-service.ts";
 import { DarukadeAdapter, rowToHit } from "./darukade-adapter.ts";
 import { tomanToRial, RateLimitedError, type PriceHit, type SourceAdapter } from "./types.ts";
@@ -84,6 +84,25 @@ test("delgarm parseRows extracts name/price rows from a prices-list page", () =>
   assert.equal(rows[0].name, "شربت زینک دکتر کیدز");
   assert.equal(rows[0].priceToman, 199000);
   assert.equal(rows[1].priceToman, 85000);
+});
+
+test("delgarm discovery breaker mutes after consecutive zero-candidate rounds (issue #54)", () => {
+  let now = 1_000_000;
+  const breaker = new DiscoveryBreaker(3, 60_000, () => now);
+  assert.equal(breaker.shouldSkip(), false);
+  breaker.record(0);
+  breaker.record(0);
+  assert.equal(breaker.shouldSkip(), false, "two zeros do not mute yet");
+  breaker.record(2);
+  breaker.record(0);
+  breaker.record(0);
+  assert.equal(breaker.shouldSkip(), false, "a hit resets the streak");
+  breaker.record(0);
+  assert.equal(breaker.shouldSkip(), true, "third consecutive zero mutes");
+  now += 59_000;
+  assert.equal(breaker.shouldSkip(), true, "still muted inside the cooldown");
+  now += 2_000;
+  assert.equal(breaker.shouldSkip(), false, "cooldown over — discovery retries");
 });
 
 test("delgarm matchScore ranks the right product high and unrelated low", () => {
