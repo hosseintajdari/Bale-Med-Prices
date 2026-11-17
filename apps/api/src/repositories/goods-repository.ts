@@ -17,7 +17,61 @@ function loadGoods(): Good[] {
   return mockGoods;
 }
 
-const goods: Good[] = loadGoods();
+// REST complement channel (read-only): a separate dataset pulled over the
+// vendor REST API by rest_cycle.py. It is merged FILL-ONLY — an item is
+// appended only when neither its numeric code nor its normalized title
+// exists in the primary (token-channel) catalog, so a REST price can
+// never override a token-channel price. A missing or malformed REST file
+// is not an error: the primary catalog is served alone, silently.
+function loadRestGoods(): Good[] {
+  const path = process.env.REST_GOODS_PATH;
+  if (path && process.env.NODE_ENV !== "test") {
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8"));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as Good[];
+      }
+    } catch {
+      // fall through: primary catalog only
+    }
+  }
+  return [];
+}
+
+export function mergeRestComplement(base: Good[], rest: Good[]): Good[] {
+  if (rest.length === 0) return base;
+  const codes = new Set<string>();
+  const titles = new Set<string>();
+  const keyOf = (good: Good) => (good.internalCode || "").trim();
+  const titleKeysOf = (good: Good) =>
+    [good.persianTitle, good.title, good.englishTitle]
+      .map((t) => normalizeSearchText(t || ""))
+      .filter((t) => t.length > 0);
+  for (const good of base) {
+    const code = keyOf(good);
+    if (code) codes.add(code);
+    for (const t of titleKeysOf(good)) titles.add(t);
+  }
+  const seenIds = new Set<string>();
+  const additions: Good[] = [];
+  for (const good of rest) {
+    if (seenIds.has(good.id)) continue;
+    seenIds.add(good.id);
+    const code = keyOf(good);
+    if (code && codes.has(code)) continue;
+    const tks = titleKeysOf(good);
+    if (tks.some((t) => titles.has(t))) continue;
+    additions.push(good);
+    if (code) codes.add(code);
+    for (const t of tks) titles.add(t);
+  }
+  if (additions.length > 0) {
+    console.log(`[goods] REST complement: +${additions.length} items over base ${base.length}`);
+  }
+  return additions.length > 0 ? [...base, ...additions] : base;
+}
+
+const goods: Good[] = mergeRestComplement(loadGoods(), loadRestGoods());
 import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
 import { selectionHistoryStore } from "../services/selection-history-store.ts";
 
