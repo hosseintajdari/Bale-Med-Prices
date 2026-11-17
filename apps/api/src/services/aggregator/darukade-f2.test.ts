@@ -34,6 +34,10 @@ function makeFixtureDb() {
   ins.run("https://darukade.com/p/5", "پودر آمینو انرژی", null, "ترک نوتریشن", "Trec Nutrition", 250000);
   // Joined brand: box spelling «La Farrerr» (two tokens), catalog «Lafarrerr» (one).
   ins.run("https://darukade.com/p/6", "شامپو ماینوکسی موهای چرب", "250 میلی لیتر", "لافارر", "Lafarrerr", 809100);
+  // Alef mismatch, stored with ا: patients type «لورآل», catalog says «لورال».
+  ins.run("https://darukade.com/p/7", "رنگ موی کستینگ کرم", null, "لورال", "Loreal", 64300);
+  // Alef mismatch, stored with آ: patients type «ابادیس», catalog says «آبادیس».
+  ins.run("https://darukade.com/p/8", "شامپو روزانه ملایم", null, "آبادیس", "Abadis", 120000);
   db.close();
   return { dir, path };
 }
@@ -48,6 +52,8 @@ test("darukade index: brand_en, brand_fa, bare name and joined forms are all ind
     assert.equal(adapter.isIndexedQuery("normlife"), true);
     assert.equal(adapter.isIndexedQuery("trec"), true); // brand stem of «Trec Nutrition»
     assert.equal(adapter.isIndexedQuery("trec nutrition"), true);
+    assert.equal(adapter.isIndexedQuery("لورآل"), true); // typed آ, stored ا
+    assert.equal(adapter.isIndexedQuery("ابادیس"), true); // typed ا, stored آ
     assert.equal(adapter.isIndexedQuery("وانا آیرون"), true);
     assert.equal(adapter.isIndexedQuery("واناآیرون"), true);
     assert.equal(adapter.isIndexedQuery("vitabiotics"), false);
@@ -88,6 +94,22 @@ test("darukade: two-token box spelling of a joined brand still scores the brand 
     assert.equal(hits[0].priceRial, 8091000);
     const stem = await adapter.search("Trec");
     assert.equal(stem.length, 1);
+  } finally {
+    adapter.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("darukade: alef-mismatched brand queries reach their rows in both directions", async () => {
+  const { dir, path } = makeFixtureDb();
+  const adapter = new DarukadeAdapter(path);
+  try {
+    const typedAlef = await adapter.search("لورآل"); // typed آ, stored «لورال»
+    assert.equal(typedAlef.length, 1);
+    assert.equal(typedAlef[0].priceRial, 643000);
+    const typedPlain = await adapter.search("ابادیس"); // typed ا, stored «آبادیس»
+    assert.equal(typedPlain.length, 1);
+    assert.equal(typedPlain[0].priceRial, 1200000);
   } finally {
     adapter.close();
     rmSync(dir, { recursive: true, force: true });

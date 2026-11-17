@@ -68,15 +68,42 @@ function likeEscape(token: string): string {
 }
 
 /**
- * Probe forms for one token: the normalized form plus its Arabic-letter
- * variant (ی→ي، ک→ك), because catalog text is stored raw while queries are
- * normalized — the SQL pull must not miss rows the scorer would accept.
+ * Probe forms for one token: the normalized form plus the raw-storage
+ * variants the SQL pull must not miss, because catalog text is stored
+ * raw while queries are normalized:
+ * - Arabic letters (ی→ي، ک→ك) — catalog rows may carry either script.
+ * - Alef variants, both directions: stored rows keep their own alef
+ *   («لورال» stored with ا while patients type «لورآل»; «آبادیس» stored
+ *   with آ while patients type «ابادیس»). A one-direction probe set
+ *   relocates the blind spot instead of removing it — the exact
+ *   failure a fresh-context review caught on a sibling attempt.
  */
 function probeForms(token: string): string[] {
   const forms = new Set<string>([token]);
   const arabic = token.replace(/ی/g, "ي").replace(/ک/g, "ك");
   forms.add(arabic);
+  for (const form of [token, arabic]) {
+    if (form.startsWith("ا")) {
+      forms.add(`آ${form.slice(1)}`);
+    }
+    if (form.includes("ا")) {
+      forms.add(form.replace(/ا/g, "آ"));
+    }
+    if (form.includes("آ")) {
+      forms.add(form.replace(/آ/g, "ا"));
+    }
+  }
   return [...forms];
+}
+
+/**
+ * Alef fold for IN-MEMORY comparison only (index, identity guard,
+ * scoring): آ and ا are the same letter typed two ways, and the
+ * catalog mixes both. Display text and the SQL pull keep raw forms —
+ * the pull is covered by probeForms variants instead.
+ */
+function foldAlef(value: string): string {
+  return value.replace(/آ/g, "ا");
 }
 
 export class DarukadeAdapter implements SourceAdapter {
@@ -110,7 +137,9 @@ export class DarukadeAdapter implements SourceAdapter {
     const brands = new Set<string>();
     const names = new Set<string>();
     const add = (set: Set<string>, raw: unknown, withTokens = false) => {
-      const value = normalizeSearchText(typeof raw === "string" ? raw : "");
+      // Index keys are alef-folded; lookups fold the same way, so a
+      // brand stored as «لورال» answers a query typed «لورآل».
+      const value = foldAlef(normalizeSearchText(typeof raw === "string" ? raw : ""));
       if (!value) {
         return;
       }
@@ -161,7 +190,7 @@ export class DarukadeAdapter implements SourceAdapter {
       return false;
     }
     this.buildIndex(db);
-    const query = normalizeSearchText(normalizedQuery ?? "");
+    const query = foldAlef(normalizeSearchText(normalizedQuery ?? ""));
     if (!query) {
       return false;
     }
@@ -265,7 +294,9 @@ export class DarukadeAdapter implements SourceAdapter {
     // سیتریزین» surface unrelated syrups at 0.5 (شربت matched, the drug
     // name matched nothing) — a wrong syrup with a real price is worse
     // than an honest miss.
-    const identityTokens = tokens.filter((token) => isIdentityToken(token));
+    const identityTokens = tokens
+      .filter((token) => isIdentityToken(token))
+      .map((token) => foldAlef(token));
     const scored: { hit: PriceHit; score: number }[] = [];
     for (const row of rows) {
       const hit = rowToHit(row);
@@ -274,8 +305,10 @@ export class DarukadeAdapter implements SourceAdapter {
       }
       if (identityTokens.length > 0) {
         const rowTokens = new Set(
-          normalizeSearchText(
-            [row.name ?? "", row.variant_title ?? "", row.brand_en ?? "", row.brand_fa ?? ""].join(" ")
+          foldAlef(
+            normalizeSearchText(
+              [row.name ?? "", row.variant_title ?? "", row.brand_en ?? "", row.brand_fa ?? ""].join(" ")
+            )
           )
             .split(" ")
             .filter(Boolean)
@@ -292,14 +325,15 @@ export class DarukadeAdapter implements SourceAdapter {
         }
       }
       const joinedQuery = query.replace(/\s+/g, "");
+      const scoreText = (q: string, text: string) => matchScore(foldAlef(q), foldAlef(text));
       const score = Math.max(
-        matchScore(query, row.name ?? ""),
-        row.variant_title ? matchScore(query, `${row.name ?? ""} ${row.variant_title}`) : 0,
-        row.brand_en ? matchScore(query, row.brand_en) : 0,
+        scoreText(query, row.name ?? ""),
+        row.variant_title ? scoreText(query, `${row.name ?? ""} ${row.variant_title}`) : 0,
+        row.brand_en ? scoreText(query, row.brand_en) : 0,
         // Joined-brand form: the box says «La Farrerr» (two tokens), the
         // catalog stores «Lafarrerr» (one) — score the spaceless pair too.
-        row.brand_en ? matchScore(joinedQuery, row.brand_en.replace(/\s+/g, "")) : 0,
-        row.brand_fa ? matchScore(query, `${row.name ?? ""} ${row.brand_fa}`) : 0
+        row.brand_en ? scoreText(joinedQuery, row.brand_en.replace(/\s+/g, "")) : 0,
+        row.brand_fa ? scoreText(query, `${row.name ?? ""} ${row.brand_fa}`) : 0
       );
       if (score >= MATCH_THRESHOLD) {
         scored.push({ hit, score });
