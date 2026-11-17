@@ -23,14 +23,29 @@ function loadGoods(): Good[] {
 // exists in the primary (token-channel) catalog, so a REST price can
 // never override a token-channel price. A missing or malformed REST file
 // is not an error: the primary catalog is served alone, silently.
+export function sanitizeRestGoods(parsed: unknown): Good[] {
+  if (!Array.isArray(parsed)) return [];
+  const out: Good[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.id !== "string" || e.id.length === 0) continue;
+    out.push({
+      ...e,
+      internalCode: typeof e.internalCode === "string" ? e.internalCode : String(e.internalCode ?? ""),
+      persianTitle: typeof e.persianTitle === "string" ? e.persianTitle : String(e.persianTitle ?? ""),
+      title: typeof e.title === "string" ? e.title : String(e.title ?? ""),
+      englishTitle: typeof e.englishTitle === "string" ? e.englishTitle : String(e.englishTitle ?? ""),
+    } as Good);
+  }
+  return out;
+}
+
 function loadRestGoods(): Good[] {
   const path = process.env.REST_GOODS_PATH;
   if (path && process.env.NODE_ENV !== "test") {
     try {
-      const parsed = JSON.parse(readFileSync(path, "utf8"));
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed as Good[];
-      }
+      return sanitizeRestGoods(JSON.parse(readFileSync(path, "utf8")));
     } catch {
       // fall through: primary catalog only
     }
@@ -71,7 +86,14 @@ export function mergeRestComplement(base: Good[], rest: Good[]): Good[] {
   return additions.length > 0 ? [...base, ...additions] : base;
 }
 
-const goods: Good[] = mergeRestComplement(loadGoods(), loadRestGoods());
+const baseGoods: Good[] = loadGoods();
+let goods: Good[] = baseGoods;
+try {
+  goods = mergeRestComplement(baseGoods, loadRestGoods());
+} catch {
+  // A malformed complement must never take the primary catalog down.
+  goods = baseGoods;
+}
 import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
 import { selectionHistoryStore } from "../services/selection-history-store.ts";
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeRestComplement } from "./goods-repository.ts";
+import { mergeRestComplement, sanitizeRestGoods } from "./goods-repository.ts";
 import type { Good } from "../../../../packages/domain/src/types.ts";
 
 function good(partial: Partial<Good> & { id: string }): Good {
@@ -68,4 +68,24 @@ test("duplicate REST ids and self-duplicates collapse", () => {
 
 test("empty REST set returns the base untouched", () => {
   assert.equal(mergeRestComplement(base, []), base);
+});
+
+test("sanitize drops null and id-less entries instead of throwing downstream", () => {
+  const cleaned = sanitizeRestGoods([null, 42, "x", { noId: true }, good({ id: "r-9", internalCode: "999", persianTitle: "کالای تازه" })]);
+  assert.equal(cleaned.length, 1);
+  assert.equal(cleaned[0].id, "r-9");
+  assert.doesNotThrow(() => mergeRestComplement(base, cleaned));
+});
+
+test("sanitize coerces a numeric internalCode to string so keyOf never throws", () => {
+  const cleaned = sanitizeRestGoods([{ id: "r-10", internalCode: 6534, persianTitle: "شربت پدیاکید" }]);
+  assert.equal(cleaned.length, 1);
+  assert.equal(cleaned[0].internalCode, "6534");
+  // coerced code matches the base code -> skipped by the fill-only merge
+  assert.equal(mergeRestComplement(base, cleaned).length, 2);
+});
+
+test("sanitize of a non-array payload is an empty complement", () => {
+  assert.deepEqual(sanitizeRestGoods({ goods: [] }), []);
+  assert.deepEqual(sanitizeRestGoods(null), []);
 });
