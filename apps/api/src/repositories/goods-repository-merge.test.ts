@@ -136,6 +136,12 @@ test("title-only match is never price-swapped, even when REST is fresher", () =>
   assert.equal(merged.length, 2, "title-matched REST item is not appended either");
 });
 
+test("a fresher REST price of 0 never erases a real primary price", () => {
+  const rest = [good({ id: "r-f5", internalCode: "6534", persianTitle: "شربت پدیاکید", sellPrice: 0 })];
+  const merged = mergeRestComplement(base, rest, { baseAt: 1000, restAt: 2000 });
+  assert.equal(merged.find((g) => g.internalCode === "6534")?.sellPrice, 1000);
+});
+
 test("duplicate REST codes are disambiguated by title before any price swap", () => {
   // Vendor reality: two REST records share one code with different prices.
   const rest = [

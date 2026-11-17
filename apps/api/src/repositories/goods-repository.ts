@@ -146,7 +146,10 @@ export function mergeRestComplement(base: Good[], rest: Good[], freshness: Compl
       const code = keyOf(good);
       const candidates = code ? restByCode.get(code) : undefined;
       const fresher = candidates ? pickCandidate(good, candidates) : undefined;
-      if (!fresher || fresher.sellPrice === good.sellPrice) return good;
+      // A fresher price of 0 is "no price signal" (sanitize coerces a
+      // missing/mistyped REST price to 0) — it must never erase a real
+      // primary price.
+      if (!fresher || fresher.sellPrice <= 0 || fresher.sellPrice === good.sellPrice) return good;
       overrides++;
       const lo = Math.min(good.sellPrice, fresher.sellPrice);
       const hi = Math.max(good.sellPrice, fresher.sellPrice);
@@ -214,7 +217,7 @@ function restPulledAtMs(restPath: string | undefined): number | undefined {
 }
 
 function stampMissing(items: Good[], atMs: number | undefined): Good[] {
-  if (typeof atMs !== "number") return items;
+  if (typeof atMs !== "number" || !Number.isFinite(atMs)) return items;
   const iso = new Date(atMs).toISOString();
   if (items.every((g) => g.crawledAt)) return items;
   return items.map((g) => (g.crawledAt ? g : { ...g, crawledAt: iso }));
