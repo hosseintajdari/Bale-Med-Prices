@@ -107,6 +107,26 @@ test("sanitize fully defaults a sparse entry so unguarded downstream reads are s
   assert.doesNotThrow(() => g.sources.map((s) => s));
 });
 
+test("sanitize cleans sources ELEMENTS — [null] can never reach toPatientSource", () => {
+  const cleaned = sanitizeRestGoods([{
+    id: "r-3", internalCode: "888006", persianTitle: "کالای منبع‌دار",
+    sources: [null, 42, { key: "qanoon", label: "Qanoon", role: "pricing", priority: 1 }],
+  }]);
+  assert.equal(cleaned.length, 1);
+  assert.equal(cleaned[0].sources.length, 1);
+  assert.equal(cleaned[0].sources[0].key, "qanoon");
+  assert.doesNotThrow(() => cleaned[0].sources.map((s) => s.key));
+});
+
+test("sanitize preserves the producer's crawledAt stamp and tempPrice", () => {
+  const cleaned = sanitizeRestGoods([{
+    id: "r-4", internalCode: "888007", persianTitle: "کالای تازه",
+    crawledAt: "2026-11-17T06:24:36+0000", tempPrice: 123,
+  }]);
+  assert.equal(cleaned[0].crawledAt, "2026-11-17T06:24:36+0000");
+  assert.equal(cleaned[0].tempPrice, 123);
+});
+
 test("sanitize drops non-string aliases and mistyped fields instead of passing them through", () => {
   const cleaned = sanitizeRestGoods([{
     id: "r-2", internalCode: "888", persianTitle: "کالا",

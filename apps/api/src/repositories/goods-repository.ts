@@ -65,7 +65,22 @@ export function sanitizeRestGoods(parsed: unknown): Good[] {
         e.activeStatus === "active" || e.activeStatus === "inactive" || e.activeStatus === "unknown"
           ? e.activeStatus
           : undefined,
-      sources: Array.isArray(e.sources) ? (e.sources as Good["sources"]) : [],
+      crawledAt: optStr(e.crawledAt),
+      ttacCode: optStr(e.ttacCode),
+      ...(typeof e.tempPrice === "number" && Number.isFinite(e.tempPrice) ? { tempPrice: e.tempPrice } : {}),
+      sources: Array.isArray(e.sources)
+        ? e.sources
+            .filter((s) => s !== null && typeof s === "object")
+            .map((s) => {
+              const sr = s as Record<string, unknown>;
+              return {
+                key: str(sr.key) as Good["sources"][number]["key"],
+                label: str(sr.label),
+                role: str(sr.role) as Good["sources"][number]["role"],
+                priority: num(sr.priority, 0),
+              };
+            })
+        : [],
     });
   }
   return out;

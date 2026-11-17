@@ -30,6 +30,8 @@ export interface Good {
   patientFormLabel?: string;
   packageDescription?: string;
   activeStatus?: "active" | "inactive" | "unknown";
+  /** Snapshot/pull timestamp of this item's price (ISO), when the channel provides one. */
+  crawledAt?: string;
   ttacCode?: string;
   sources: SourceReference[];
 }
