@@ -158,6 +158,7 @@ export class DarukadeAdapter implements SourceAdapter {
         }
       }
     };
+    let built = false;
     try {
       const brandRows = db
         .prepare("SELECT DISTINCT brand_en, brand_fa FROM darukade_products")
@@ -172,6 +173,7 @@ export class DarukadeAdapter implements SourceAdapter {
       for (const row of nameRows) {
         add(names, row.name);
       }
+      built = true;
     } catch {
       // A catalog without the expected shape indexes nothing; search
       // keeps its own degrade-to-empty contract.
@@ -180,7 +182,11 @@ export class DarukadeAdapter implements SourceAdapter {
     }
     this.brandIndex = brands;
     this.nameIndex = names;
-    this.indexMtimeMs = this.dbMtimeMs;
+    // Stamp only a successful build: a transient failure must not
+    // silently disable the supplement until the DB file changes.
+    if (built) {
+      this.indexMtimeMs = this.dbMtimeMs;
+    }
   }
 
   /** True when the (normalized) query is a Darukade brand or bare product name. */
@@ -297,6 +303,13 @@ export class DarukadeAdapter implements SourceAdapter {
     const identityTokens = tokens
       .filter((token) => isIdentityToken(token))
       .map((token) => foldAlef(token));
+    if (identityTokens.length === 0) {
+      // No identity token at all (only form/unit/digit words — «قرص»,
+      // «میلی گرم 500»): the query names no product, so matchScore's
+      // token recall must not carry priced hits on its own. Honest
+      // empty, same discipline as the local fuzzy tier.
+      return [];
+    }
     const scored: { hit: PriceHit; score: number }[] = [];
     for (const row of rows) {
       const hit = rowToHit(row);

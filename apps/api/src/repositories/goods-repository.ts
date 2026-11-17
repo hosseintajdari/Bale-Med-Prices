@@ -530,6 +530,26 @@ export function exactSearchEntries(entries: SearchableGood[], query: string): Go
     );
 }
 
+const headTokensCache = new WeakMap<SearchableGood[], Set<string>>();
+
+/** First tokens of the catalog's titles (the generic names), cached per entry list. */
+function headTokensOf(entries: SearchableGood[]): Set<string> {
+  let heads = headTokensCache.get(entries);
+  if (!heads) {
+    heads = new Set<string>();
+    for (const entry of entries) {
+      for (const title of [entry.good.persianTitle, entry.good.englishTitle]) {
+        const head = normalizeSearchText(title ?? "").split(" ")[0];
+        if (head) {
+          heads.add(head);
+        }
+      }
+    }
+    headTokensCache.set(entries, heads);
+  }
+  return heads;
+}
+
 export interface FuzzyOutcome {
   /** The corrected token (single-token corrections) or corrected query; null when ambiguous. */
   matchedTerm: string | null;
@@ -560,15 +580,21 @@ export function searchFuzzyEntries(
   }
   const queryFormKeys = formKeysOfTokens(tokens);
 
+  // Head tokens = first tokens of catalog titles (the generic names).
+  // Fuzzy corrections may only target these (see fuzzyEntryMatch), so a
+  // brand-only near-token can never carry a hit at all.
+  const headTokens = headTokensOf(entries);
+
   // Mistyped form words («قرث») resolve inside the closed form
   // vocabulary before matching: the token leaves the identity set, its
   // family joins the form guard, and the correction is reported like
-  // any other. Identity tokens are never stolen by this pass — a token
-  // that corrects to a form family was not matching any drug name.
+  // any other. A token that heads a catalog title is a real generic
+  // («کروم» — Damerau-1 from the cream surface «کرم») and is never
+  // stolen into a form family.
   const identityTokens: string[] = [];
   const formCorrections: { from: string; to: string[] }[] = [];
   for (const token of softTokens) {
-    const family = formCorrectionFor(token);
+    const family = headTokens.has(token) ? null : formCorrectionFor(token);
     if (family) {
       if (!queryFormKeys.includes(family)) {
         queryFormKeys.push(family);
@@ -580,18 +606,13 @@ export function searchFuzzyEntries(
       identityTokens.push(token);
     }
   }
-
-  // Head tokens = first tokens of catalog titles (the generic names).
-  // Fuzzy corrections may only target these (see fuzzyEntryMatch), so a
-  // brand-only near-token can never carry a hit at all.
-  const headTokens = new Set<string>();
-  for (const entry of entries) {
-    for (const title of [entry.good.persianTitle, entry.good.englishTitle]) {
-      const head = normalizeSearchText(title ?? "").split(" ")[0];
-      if (head) {
-        headTokens.add(head);
-      }
-    }
+  if (identityTokens.length === 0) {
+    // No drug identity at all: every soft token was a (mistyped) form
+    // word — «قرث», «قرث 500». A form alone names no drug; answering
+    // with every tablet in the catalog is a confident wrong answer at
+    // scale (thousands of priced hits, seconds of scoring). Honest
+    // miss — the same zero-identity discipline as the web adapter.
+    return { goods: [], fuzzy: null };
   }
 
   const hits: SearchableGood[] = [];
@@ -627,12 +648,11 @@ export function searchFuzzyEntries(
   const ambiguous = corrections.some((c) => c.to.length > 1);
   let matchedTerm: string | null = null;
   if (!ambiguous) {
-    if (corrections.length === 1) {
-      matchedTerm = corrections[0].to[0];
-    } else {
-      const byToken = new Map(corrections.map((c) => [c.from, c.to[0]]));
-      matchedTerm = tokens.map((token) => byToken.get(token) ?? token).join(" ");
-    }
+    // The full corrected query, token by token. Naming only the single
+    // corrected token would ask «منظورتان «قرص» بود؟» when the drug
+    // name was typed correctly and only its form word slipped.
+    const byToken = new Map(corrections.map((c) => [c.from, c.to[0]]));
+    matchedTerm = tokens.map((token) => byToken.get(token) ?? token).join(" ");
   }
 
   const sorted = hits
