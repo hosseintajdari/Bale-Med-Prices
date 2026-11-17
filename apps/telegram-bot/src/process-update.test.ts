@@ -1,0 +1,154 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { processTelegramUpdate, clearSessionsForTest } from "./process-update.ts";
+
+/**
+ * Routing tests with a stubbed global fetch: Telegram API calls are
+ * captured; the price API returns a fixed one-item search.
+ */
+function stubFetch() {
+  const sent: Array<{ method: string; body: any }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: any, opts: any) => {
+    const u = String(url);
+    if (u.includes("/goods/search")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              persianTitle: "آموکسی‌سیلین ۵۰۰",
+              consumerUnitPrice: 450000,
+              webSource: true,
+              webSourceName: "torob",
+              crawledAt: "2026-11-17T08:00:00.000Z"
+            }
+          ]
+        })
+      } as any;
+    }
+    if (u.includes("/bot/lookup")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ type: "not_found", query: "پیتزا" })
+      } as any;
+    }
+    const method = u.split("/").pop() ?? "";
+    sent.push({ method, body: opts?.body ? JSON.parse(opts.body) : {} });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: true }) } as any;
+  }) as any;
+  return {
+    sent,
+    restore() {
+      globalThis.fetch = originalFetch;
+    }
+  };
+}
+
+const config = { token: "tok", apiBaseUrl: "http://api.test" };
+
+test("photo message gets guidance, never silence (F1 parity)", async () => {
+  const stub = stubFetch();
+  clearSessionsForTest();
+  try {
+    await processTelegramUpdate(config, {
+      message: { chat: { id: 7 }, photo: [{ file_id: "p1" }] }
+    });
+  } finally {
+    stub.restore();
+  }
+  const sends = stub.sent.filter((c) => c.method === "sendMessage");
+  assert.equal(sends.length, 1);
+  assert.ok(sends[0].body.text.includes("عکس رسید"));
+});
+
+test("voice message gets non-text guidance; service message stays silent", async () => {
+  const stub = stubFetch();
+  clearSessionsForTest();
+  try {
+    await processTelegramUpdate(config, {
+      message: { chat: { id: 7 }, voice: { file_id: "v1" } }
+    });
+    await processTelegramUpdate(config, {
+      message: { chat: { id: 7 }, new_chat_members: [{ id: 1 }] }
+    });
+  } finally {
+    stub.restore();
+  }
+  const sends = stub.sent.filter((c) => c.method === "sendMessage");
+  assert.equal(sends.length, 1);
+  assert.ok(sends[0].body.text.includes("به‌صورت متن"));
+});
+
+test("text search shows a typing action before the price reply", async () => {
+  const stub = stubFetch();
+  clearSessionsForTest();
+  try {
+    await processTelegramUpdate(config, {
+      message: { chat: { id: 9 }, text: "آموکسی‌سیلین" }
+    });
+  } finally {
+    stub.restore();
+  }
+  const actions = stub.sent.filter((c) => c.method === "sendChatAction");
+  assert.ok(actions.length >= 1);
+  assert.equal(actions[0].body.action, "typing");
+  const sends = stub.sent.filter((c) => c.method === "sendMessage");
+  assert.equal(sends.length, 1);
+  assert.ok(sends[0].body.text.includes("۴۵۰٬۰۰۰ ریال"));
+});
+
+test("inline query answers with price articles", async () => {
+  const stub = stubFetch();
+  clearSessionsForTest();
+  try {
+    await processTelegramUpdate(config, {
+      inline_query: { id: "iq1", from: { id: 5 }, query: "آموکسی‌سیلین" }
+    });
+  } finally {
+    stub.restore();
+  }
+  const answers = stub.sent.filter((c) => c.method === "answerInlineQuery");
+  assert.equal(answers.length, 1);
+  assert.equal(answers[0].body.inline_query_id, "iq1");
+  assert.ok(answers[0].body.results.length >= 1);
+  assert.ok(
+    answers[0].body.results[0].input_message_content.message_text.includes("۴۵۰٬۰۰۰ ریال")
+  );
+});
+
+test("empty inline query answers with the hint article", async () => {
+  const stub = stubFetch();
+  clearSessionsForTest();
+  try {
+    await processTelegramUpdate(config, {
+      inline_query: { id: "iq2", from: { id: 5 }, query: "  " }
+    });
+  } finally {
+    stub.restore();
+  }
+  const answers = stub.sent.filter((c) => c.method === "answerInlineQuery");
+  assert.equal(answers.length, 1);
+  assert.ok(answers[0].body.results[0].input_message_content.message_text.includes("نام دارو"));
+});
+
+test("unknown callback gets a native alert, not silence", async () => {
+  const stub = stubFetch();
+  clearSessionsForTest();
+  try {
+    await processTelegramUpdate(config, {
+      callback_query: {
+        id: "cq9",
+        data: "zz:unknown",
+        message: { chat: { id: 3 }, message_id: 11 }
+      }
+    });
+  } finally {
+    stub.restore();
+  }
+  const answers = stub.sent.filter((c) => c.method === "answerCallbackQuery");
+  assert.equal(answers.length, 1);
+  assert.equal(answers[0].body.show_alert, true);
+});
