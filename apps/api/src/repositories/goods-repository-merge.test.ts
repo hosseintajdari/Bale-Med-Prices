@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeRestComplement, sanitizeRestGoods } from "./goods-repository.ts";
+import { assembleCatalog, mergeRestComplement, sanitizeRestGoods } from "./goods-repository.ts";
 import type { Good } from "../../../../packages/domain/src/types.ts";
 
 function good(partial: Partial<Good> & { id: string }): Good {
@@ -68,6 +68,52 @@ test("duplicate REST ids and self-duplicates collapse", () => {
 
 test("empty REST set returns the base untouched", () => {
   assert.equal(mergeRestComplement(base, []), base);
+});
+
+// --- assembleCatalog: the REST-primary switch (Scan-B verdict 2026-11-18)
+
+const restPrimary: Good[] = [
+  good({ id: "r-1", internalCode: "6534", persianTitle: "شربت پدیاکید", title: "PEDIAKID SYRUP", sellPrice: 1500 }),
+  good({ id: "r-2", internalCode: "222", persianTitle: "کپسول امپرازول", title: "OMEPRAZOLE CAP", sellPrice: 3000 }),
+];
+const tokenFallback: Good[] = [
+  good({ id: "q-1", internalCode: "6534", persianTitle: "شربت پدیاکید", title: "PEDIAKID SYRUP", sellPrice: 1000 }),
+  good({ id: "q-9", internalCode: "999", persianTitle: "حق فنی", title: "TECHNICAL FEE", sellPrice: 500 }),
+];
+
+test("assembleCatalog: REST is primary — identity and price come from REST for matched items", () => {
+  const merged = assembleCatalog({ tokenGoods: tokenFallback, tokenFromFile: true, restGoods: restPrimary });
+  const matched = merged.find((g) => g.internalCode === "6534");
+  assert.equal(matched?.id, "r-1", "the REST record is the served identity");
+  assert.equal(matched?.sellPrice, 1500, "REST price wins when the token snapshot is not fresher");
+});
+
+test("assembleCatalog: token-only items fill in (the technical-fee service survives the switch)", () => {
+  const merged = assembleCatalog({ tokenGoods: tokenFallback, tokenFromFile: true, restGoods: restPrimary });
+  assert.equal(merged.length, 3);
+  assert.ok(merged.some((g) => g.id === "q-9"));
+});
+
+test("assembleCatalog: a FRESHER token snapshot updates matched prices, identity stays REST", () => {
+  const merged = assembleCatalog({
+    tokenGoods: tokenFallback,
+    tokenFromFile: true,
+    tokenAt: 2000,
+    restGoods: restPrimary,
+    restAt: 1000,
+  });
+  const matched = merged.find((g) => g.internalCode === "6534");
+  assert.equal(matched?.id, "r-1");
+  assert.equal(matched?.sellPrice, 1000, "fresher fallback price applies under the same guards");
+});
+
+test("assembleCatalog: no REST → token alone; mock token (not from file) never fills into REST", () => {
+  assert.equal(
+    assembleCatalog({ tokenGoods: tokenFallback, tokenFromFile: true, restGoods: [] }),
+    tokenFallback
+  );
+  const restOnly = assembleCatalog({ tokenGoods: tokenFallback, tokenFromFile: false, restGoods: restPrimary });
+  assert.equal(restOnly, restPrimary, "bundled mock data must not pollute the primary catalog");
 });
 
 test("sanitize drops null and id-less entries instead of throwing downstream", () => {

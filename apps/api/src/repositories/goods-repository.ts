@@ -2,27 +2,30 @@ import { readFileSync, statSync } from "node:fs";
 import { goods as mockGoods } from "../data/mock-data.ts";
 import type { Good } from "../../../../packages/domain/src/types.ts";
 
-function loadGoods(): Good[] {
+function loadGoods(): { goods: Good[]; fromFile: boolean } {
   const path = process.env.QANUN_GOODS_PATH;
   if (path && process.env.NODE_ENV !== "test") {
     try {
       const parsed = JSON.parse(readFileSync(path, "utf8"));
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed as Good[];
+        return { goods: parsed as Good[], fromFile: true };
       }
     } catch {
       // fall through to the bundled mock data
     }
   }
-  return mockGoods;
+  return { goods: mockGoods, fromFile: false };
 }
 
-// REST complement channel (read-only): a separate dataset pulled over the
-// vendor REST API by rest_cycle.py. Merge order follows snapshot
-// freshness: a NEWER REST snapshot updates prices of code-matched items
-// (identity stays primary) and appends items the primary lacks; an older
-// or undated REST snapshot is fill-only. A missing or malformed REST file
-// is not an error: the primary catalog is served alone, silently.
+// REST channel (read-only): a separate dataset pulled over the vendor
+// REST API by rest_cycle.py. Since the Scan-B verdict (2026-11-18 —
+// record-level REST≡token price identity, the old deltas were a
+// code-reuse matching artifact) REST is the PRIMARY catalog: it defines
+// identity and coverage. The token catalog is the fallback complement:
+// it appends items REST lacks and, when its snapshot is fresher,
+// updates prices of code-matched items under the same guards. A missing
+// or malformed file on either side is not an error: the other catalog
+// is served alone.
 export function sanitizeRestGoods(parsed: unknown): Good[] {
   if (!Array.isArray(parsed)) return [];
   const str = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
@@ -99,25 +102,28 @@ function loadRestGoods(): Good[] {
 }
 
 export interface ComplementFreshness {
-  /** Snapshot time (ms) of the primary catalog file. */
+  /** Snapshot time (ms) of the primary catalog. */
   baseAt?: number;
-  /** Snapshot time (ms) of the REST dataset (meta pulled_at, else file mtime). */
+  /** Snapshot time (ms) of the complement dataset. */
   restAt?: number;
+  /** Log label for the complement channel (default "REST"). */
+  complementLabel?: string;
 }
 
 export function mergeRestComplement(base: Good[], rest: Good[], freshness: ComplementFreshness = {}): Good[] {
   if (rest.length === 0) return base;
+  const complementLabel = freshness.complementLabel ?? "REST";
   const keyOf = (good: Good) => (good.internalCode || "").trim();
   const titleKeysOf = (good: Good) =>
     [good.persianTitle, good.title, good.englishTitle]
       .map((t) => normalizeSearchText(t || ""))
       .filter((t) => t.length > 0);
 
-  // Freshness order (owner's strategy): when the REST snapshot is NEWER
-  // than the primary snapshot, code-matched items take the REST price —
+  // Freshness order: when the complement snapshot is NEWER than the
+  // primary snapshot, code-matched items take the complement price —
   // the identity (titles, codes) always stays with the primary item, and
   // title-only matches are never price-swapped (identity ambiguity).
-  // Otherwise the merge is fill-only, exactly as before.
+  // Otherwise the merge is fill-only.
   const restFresher =
     typeof freshness.restAt === "number" &&
     typeof freshness.baseAt === "number" &&
@@ -156,12 +162,12 @@ export function mergeRestComplement(base: Good[], rest: Good[], freshness: Compl
       if (lo > 0 && hi / lo > 5) {
         // Observability only: a >5x cross-channel delta is worth a human
         // look later; the freshness rule still applies.
-        console.warn(`[goods] REST price override code=${code} ratio=${(hi / lo).toFixed(1)}`);
+        console.warn(`[goods] ${complementLabel} price override code=${code} ratio=${(hi / lo).toFixed(1)}`);
       }
       return { ...good, sellPrice: fresher.sellPrice, crawledAt: fresher.crawledAt ?? good.crawledAt };
     });
     if (overrides > 0) {
-      console.log(`[goods] REST fresher: ${overrides} prices updated from REST snapshot`);
+      console.log(`[goods] ${complementLabel} fresher: ${overrides} prices updated from ${complementLabel} snapshot`);
     }
   }
 
@@ -186,7 +192,7 @@ export function mergeRestComplement(base: Good[], rest: Good[], freshness: Compl
     for (const t of tks) titles.add(t);
   }
   if (additions.length > 0) {
-    console.log(`[goods] REST complement: +${additions.length} items over base ${effectiveBase.length}`);
+    console.log(`[goods] ${complementLabel} complement: +${additions.length} items over base ${effectiveBase.length}`);
   }
   if (additions.length > 0) return [...effectiveBase, ...additions];
   return effectiveBase;
@@ -223,21 +229,52 @@ function stampMissing(items: Good[], atMs: number | undefined): Good[] {
   return items.map((g) => (g.crawledAt ? g : { ...g, crawledAt: iso }));
 }
 
-const baseGoodsRaw: Good[] = loadGoods();
-const restGoodsRaw: Good[] = loadRestGoods();
-const baseAtMs = fileTimeMs(process.env.QANUN_GOODS_PATH);
-const restAtMs = restGoodsRaw.length > 0 ? restPulledAtMs(process.env.REST_GOODS_PATH) : undefined;
-const baseGoods: Good[] = stampMissing(baseGoodsRaw, baseAtMs);
-let goods: Good[] = baseGoods;
-try {
-  goods = mergeRestComplement(baseGoods, stampMissing(restGoodsRaw, restAtMs), {
-    baseAt: baseAtMs,
-    restAt: restAtMs,
-  });
-} catch {
-  // A malformed complement must never take the primary catalog down.
-  goods = baseGoods;
+export interface CatalogChannels {
+  /** Token-channel catalog (fallback since 2026-11-18). */
+  tokenGoods: Good[];
+  /** True only when the token goods came from the real catalog file —
+   * the bundled mock data must never fill into a REST-primary catalog. */
+  tokenFromFile: boolean;
+  tokenAt?: number;
+  /** REST catalog (primary since the Scan-B verdict, 2026-11-18). */
+  restGoods: Good[];
+  restAt?: number;
 }
+
+/**
+ * Assemble the served catalog from the two channels. REST is primary
+ * (identity + coverage); the token catalog is the complement under the
+ * exact guards mergeRestComplement has always enforced (fresher-wins on
+ * code+title-matched prices, ≤0 never overrides, >5x logged, fill-only
+ * otherwise). Degradation is one-directional and safe: no REST → token
+ * alone; no real token file → REST alone; a throwing merge → primary.
+ */
+export function assembleCatalog(channels: CatalogChannels): Good[] {
+  const { tokenGoods, tokenFromFile, tokenAt, restGoods, restAt } = channels;
+  if (restGoods.length === 0) return tokenGoods;
+  if (!tokenFromFile || tokenGoods.length === 0) return restGoods;
+  try {
+    return mergeRestComplement(restGoods, tokenGoods, {
+      baseAt: restAt,
+      restAt: tokenAt,
+      complementLabel: "token",
+    });
+  } catch {
+    return restGoods;
+  }
+}
+
+const tokenLoaded = loadGoods();
+const restGoodsRaw: Good[] = loadRestGoods();
+const tokenAtMs = fileTimeMs(process.env.QANUN_GOODS_PATH);
+const restAtMs = restGoodsRaw.length > 0 ? restPulledAtMs(process.env.REST_GOODS_PATH) : undefined;
+const goods: Good[] = assembleCatalog({
+  tokenGoods: stampMissing(tokenLoaded.goods, tokenAtMs),
+  tokenFromFile: tokenLoaded.fromFile,
+  tokenAt: tokenAtMs,
+  restGoods: stampMissing(restGoodsRaw, restAtMs),
+  restAt: restAtMs,
+});
 import { normalizeSearchText, tokenizeSearchText } from "../search/search-normalization.ts";
 import {
   formCorrectionFor,
