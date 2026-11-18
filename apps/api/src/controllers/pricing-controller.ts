@@ -1,6 +1,49 @@
+import crypto from "node:crypto";
 import { pricingService } from "../services/pricing-service.ts";
 import { botResponsePresenter } from "../services/bot-response-presenter.ts";
 import { priceCacheService } from "../services/price-cache-service.ts";
+
+/**
+ * Fixes #33: the cache-management endpoints are admin-only. Configure
+ * ADMIN_TOKEN on the server and send it as the `x-admin-token` header.
+ * Note: the header is deliberately NOT in Access-Control-Allow-Headers, so a
+ * browser page on another origin cannot drive these endpoints.
+ */
+function getAdminToken() {
+  return (process.env.ADMIN_TOKEN ?? "").trim();
+}
+
+function isAdminRequest(request) {
+  const configured = getAdminToken();
+
+  if (!configured) {
+    return false;
+  }
+
+  const provided = request.headers?.["x-admin-token"];
+
+  if (typeof provided !== "string" || provided.length === 0) {
+    return false;
+  }
+
+  const providedBuffer = Buffer.from(provided);
+  const configuredBuffer = Buffer.from(configured);
+
+  return (
+    providedBuffer.length === configuredBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, configuredBuffer)
+  );
+}
+
+function sendAdminError(response) {
+  const error = getAdminToken()
+    ? { status: 403, message: "Invalid admin token" }
+    : { status: 503, message: "Cache admin endpoints are disabled (ADMIN_TOKEN not configured)" };
+
+  response.statusCode = error.status;
+  response.setHeader("Content-Type", "application/json");
+  response.end(JSON.stringify({ error: error.message }));
+}
 
 async function readJsonBody(request) {
   const chunks = [];
@@ -31,10 +74,15 @@ export const pricingController = {
 
       const cacheControl = request.headers?.["cache-control"] ?? "";
       const pragma = request.headers?.["pragma"] ?? "";
-      const bypassCache =
+
+      // Fixes #50: any client could force recomputation by sending
+      // Cache-Control: no-cache (a minor DoS assist). Cache bypass is now
+      // honored for admin callers only.
+      const wantsBypass =
         Boolean(payload.skipCache) ||
         cacheControl.includes("no-cache") ||
         pragma.includes("no-cache");
+      const bypassCache = wantsBypass && isAdminRequest(request);
 
       const cacheKey = priceCacheService.createKey(pricingInput, format);
 
@@ -71,11 +119,21 @@ export const pricingController = {
   },
 
   cacheStats(request, response) {
+    if (!isAdminRequest(request)) {
+      sendAdminError(response);
+      return;
+    }
+
     response.setHeader("Content-Type", "application/json");
     response.end(JSON.stringify(priceCacheService.getStats()));
   },
 
   clearCache(request, response) {
+    if (!isAdminRequest(request)) {
+      sendAdminError(response);
+      return;
+    }
+
     const cleared = priceCacheService.invalidate();
     response.setHeader("Content-Type", "application/json");
     response.end(JSON.stringify({ cleared }));

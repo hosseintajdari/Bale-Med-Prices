@@ -93,7 +93,21 @@ export const goodsController = {
 
   getById(request, response) {
     try {
-      const id = request.url?.split("/").pop() ?? "";
+      // Fixes #25: parse the pathname (not the raw URL), take the last path
+      // segment, and decode it — a query string or trailing slash no longer
+      // corrupts the id ("/goods/g-1001?format=x" used to look up
+      // "g-1001?format=x" and 404).
+      const parsed = new URL(request.url ?? "", "http://localhost");
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      const rawId = segments[segments.length - 1] ?? "";
+      let id = rawId;
+
+      try {
+        id = decodeURIComponent(rawId);
+      } catch {
+        id = rawId;
+      }
+
       const result = goodsService.getById(id);
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(result));

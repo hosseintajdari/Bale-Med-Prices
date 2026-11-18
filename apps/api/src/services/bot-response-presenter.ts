@@ -66,9 +66,36 @@ function buildSelectionChoice(choice, sessionId) {
   };
 }
 
+/**
+ * Fixes #36: Telegram rejects over-long inline-button payloads, and long
+ * Persian labels break the keyboard layout. Truncate labels to 64 bytes on
+ * code-point boundaries (multi-byte aware) so no label can break a button.
+ */
+const MAX_BUTTON_LABEL_BYTES = 64;
+
+export function truncateUtf8Bytes(text, maxBytes = MAX_BUTTON_LABEL_BYTES) {
+  const value = String(text ?? "");
+
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) {
+    return value;
+  }
+
+  let result = "";
+
+  for (const codePoint of value) {
+    if (Buffer.byteLength(result + codePoint, "utf8") > maxBytes) {
+      break;
+    }
+
+    result += codePoint;
+  }
+
+  return result;
+}
+
 function buildTelegramButton(choice, sessionId) {
   return {
-    text: choice.label,
+    text: truncateUtf8Bytes(choice.label),
     callback_data: `ms:${sessionId}:${choice.id}`
   };
 }

@@ -310,11 +310,15 @@ export const medicineSelectionService = {
     const { query, items } = session.data;
     const choiceId = input.choiceId;
 
+    // Fixes #37: close the previous session before opening a new one so
+    // abandoned "unknown"/"refine" branches stop amplifying the session leak.
     if (choiceId === "unknown") {
+      selectionSessionStore.close(input.sessionId);
       return createIdentitySelection(query, items);
     }
 
     if (choiceId === "refine") {
+      selectionSessionStore.close(input.sessionId);
       return {
         type: "refine_search",
         query,

@@ -12,3 +12,25 @@ services:
       PORT: 4000
       API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:4000}
     restart: unless-stopped
+
+  # Fixes #32 (part): the telegram bot now has a documented compose service.
+  # It is opt-in (profiles) because it needs a real TELEGRAM_BOT_TOKEN:
+  #   docker compose --profile bots up
+  # Note the bot reaches the API as http://api:4000 inside the compose
+  # network — 127.0.0.1 would point at the bot's own container.
+  # The Bale twin runs the same way: override `command` with
+  # apps/bale-bot/src/bot.ts and the BALE_* env vars.
+  telegram-bot:
+    build: .
+    profiles:
+      - bots
+    depends_on:
+      - api
+    env_file:
+      - path: .env.telegram
+        required: false
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://api:4000}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    command: ["node", "--experimental-strip-types", "apps/telegram-bot/src/bot.ts"]
+    restart: unless-stopped

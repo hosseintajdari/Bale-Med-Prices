@@ -14,6 +14,8 @@ import {
 
 const BALE_API_BASE = "https://tapi.bale.ai";
 const MAX_RESULTS = 5;
+// Same fix as the Telegram twin (#29): every outbound fetch gets a timeout.
+const FETCH_TIMEOUT_MS = 15000;
 
 export class RateLimitedError extends Error {
   constructor(message = "price source is rate-limiting us") {
@@ -141,7 +143,8 @@ export async function callBaleApi(token: string, method: string, body: unknown):
   const response = await fetch(`${BALE_API_BASE}/bot${token}/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   });
 
   let payload: any = null;
@@ -198,7 +201,9 @@ export async function deleteBaleWebhook(token: string) {
 /** Thin call to the aggregator API: GET /goods/search?q= */
 export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promise<PriceItem[]> {
   const base = apiBaseUrl.replace(/\/$/, "");
-  const response = await fetch(`${base}/goods/search?${new URLSearchParams({ q: query })}`);
+  const response = await fetch(`${base}/goods/search?${new URLSearchParams({ q: query })}`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  });
 
   if (response.status === 429) {
     throw new RateLimitedError();
@@ -220,7 +225,9 @@ export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promi
 
 export function readBaleBotConfig(env: NodeJS.ProcessEnv = process.env) {
   const token = env.BALE_BOT_TOKEN?.trim();
-  const apiBaseUrl = env.API_BASE_URL?.trim() || `http://127.0.0.1:${env.PORT ?? 4000}`;
+  // Same fix as the Telegram twin (#47): PORT means "the port I listen on",
+  // so it must not silently misroute API calls. Default to the fixed API port.
+  const apiBaseUrl = env.API_BASE_URL?.trim() || "http://127.0.0.1:4000";
   const webhookUrl = env.BALE_WEBHOOK_URL?.trim() || "";
   const webhookSecret = env.BALE_WEBHOOK_SECRET?.trim() || "";
 

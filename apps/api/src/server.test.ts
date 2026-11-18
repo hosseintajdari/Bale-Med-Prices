@@ -185,9 +185,23 @@ test("HTTP server handles telegram-formatted goods search", async () => {
 });
 
 test("HTTP server performs price response caching with X-Cache headers and stats", async () => {
-  // Clear cache initially
-  const clearRes = await fetch(`${baseUrl}/pricing/cache/clear`, { method: "POST" });
-  assert.equal(clearRes.status, 200);
+    process.env.ADMIN_TOKEN = "test-admin-token";
+  const adminHeaders = { "x-admin-token": "test-admin-token" };
+
+  try {
+    // Clear cache initially (admin-only since #33)
+    const clearRes = await fetch(`${baseUrl}/pricing/cache/clear`, {
+      method: "POST",
+      headers: adminHeaders
+    });
+    assert.equal(clearRes.status, 200);
+
+    // Non-admin callers are rejected from cache management endpoints
+    // (403 while ADMIN_TOKEN is configured; 503 when it is not).
+    const forbiddenClear = await fetch(`${baseUrl}/pricing/cache/clear`, { method: "POST" });
+    assert.equal(forbiddenClear.status, 403);
+    const forbiddenStats = await fetch(`${baseUrl}/pricing/cache/stats`);
+    assert.equal(forbiddenStats.status, 403);
 
   const payload = {
     goodId: "g-1004",
@@ -218,8 +232,8 @@ test("HTTP server performs price response caching with X-Cache headers and stats
   const secondData = await secondRes.json();
   assert.deepEqual(secondData, firstData);
 
-  // 3. Bypass cache via Cache-Control: no-cache header
-  const bypassRes = await fetch(`${baseUrl}/pricing/calculate`, {
+  // 3. Cache-Control: no-cache is ignored for non-admin callers (#50) -> HIT
+  const ignoredBypassRes = await fetch(`${baseUrl}/pricing/calculate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -227,15 +241,31 @@ test("HTTP server performs price response caching with X-Cache headers and stats
     },
     body: JSON.stringify(payload)
   });
+  assert.equal(ignoredBypassRes.status, 200);
+  assert.equal(ignoredBypassRes.headers.get("x-cache"), "HIT");
+
+  // 3b. Admin callers can still bypass via Cache-Control: no-cache -> MISS
+  const bypassRes = await fetch(`${baseUrl}/pricing/calculate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      ...adminHeaders
+    },
+    body: JSON.stringify(payload)
+  });
   assert.equal(bypassRes.status, 200);
   assert.equal(bypassRes.headers.get("x-cache"), "MISS");
 
-  // 4. Inspect cache stats endpoint
-  const statsRes = await fetch(`${baseUrl}/pricing/cache/stats`);
+  // 4. Inspect cache stats endpoint (admin-only since #33)
+  const statsRes = await fetch(`${baseUrl}/pricing/cache/stats`, { headers: adminHeaders });
   assert.equal(statsRes.status, 200);
   const stats = await statsRes.json();
   assert.ok(stats.hits >= 1);
   assert.ok(stats.size >= 1);
+  } finally {
+    delete process.env.ADMIN_TOKEN;
+  }
 });
 
 

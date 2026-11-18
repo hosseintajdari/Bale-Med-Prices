@@ -47,8 +47,12 @@ export const botController = {
         throw invalidCallbackDataError();
       }
 
-      const sessionId = url.searchParams.get("sessionId") ?? callback?.sessionId ?? "";
-      const choiceId = url.searchParams.get("choiceId") ?? callback?.choiceId ?? "";
+      // Fixes #38: explicit sessionId/choiceId query params used to silently
+      // override the values parsed from Telegram callbackData, letting a
+      // caller mix sessions. When valid callback data is present, its values
+      // win; query params are only a fallback.
+      const sessionId = callback?.sessionId ?? url.searchParams.get("sessionId") ?? "";
+      const choiceId = callback?.choiceId ?? url.searchParams.get("choiceId") ?? "";
 
       const requestInput = parseBotRequest(url);
       const result = botLookupService.select({

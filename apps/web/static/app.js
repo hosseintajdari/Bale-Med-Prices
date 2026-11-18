@@ -174,8 +174,10 @@ function clearValidationState() {
 }
 
 function renderHints(messages) {
+  // Fixes #41 (part): hint messages used to be interpolated into innerHTML
+  // unescaped. They are static today, but the sink stays closed.
   formHints.innerHTML = messages
-    .map((message) => `<div class="hint-chip">${message}</div>`)
+    .map((message) => `<div class="hint-chip">${escapeHtml(message)}</div>`)
     .join("");
 }
 
@@ -265,6 +267,13 @@ function renderTtacDetailLink(moreInfo) {
   const ttacDetail = moreInfo?.ttacDetail;
 
   if (!ttacDetail?.detailUrl) {
+    return "";
+  }
+
+  // Fixes #41 (part): the detail URL used to be interpolated into href with
+  // no scheme allowlist — a javascript: URL would execute. Only http(s)
+  // links are rendered.
+  if (!/^https?:\/\//i.test(ttacDetail.detailUrl)) {
     return "";
   }
 

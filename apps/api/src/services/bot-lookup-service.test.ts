@@ -724,7 +724,8 @@ test("botLookupService returns structured patient pricing for web resolved looku
 
   assert.equal(result.type, "resolved");
   assert.equal(result.goodId, "g-1003");
-  assert.equal(result.pricing.consumerUnitPrice, 96000);
+  // #26: consumerUnitPrice is now the tax-inclusive unit price.
+  assert.equal(result.pricing.consumerUnitPrice, 116100);
   assert.match(result.pricing.unitPriceLabel, /قیمت هر قرص/);
   assert.equal("text" in result, false);
   assert.ok(result.sourceHints.length > 0);

@@ -15,7 +15,26 @@ function buildSourceHints(good) {
     }));
 }
 
-function toPatientPricingResponse(result) {
+function roundFor(value, roundingRule) {
+  if (roundingRule === "ceil") {
+    return Math.ceil(value);
+  }
+
+  if (roundingRule === "floor") {
+    return Math.floor(value);
+  }
+
+  return Math.round(value);
+}
+
+function toPatientPricingResponse(result, roundingRule) {
+  // Fixes #26: consumerUnitPrice used to be the raw pre-tax sell price while
+  // tax/toll/fee only appeared in finalConsumerPrice — patients saw a lower
+  // price than the pharmacy charges. It is now the tax-inclusive unit price
+  // (the primary price answer per CONTEXT.md); the pre-tax figure stays
+  // available as unitPrice/unitBasePrice for internal use.
+  const consumerUnitPrice = roundFor(result.finalPrice / result.quantity, roundingRule);
+
   return {
     goodId: result.goodId,
     title: result.title,
@@ -24,10 +43,9 @@ function toPatientPricingResponse(result) {
     unitLabel: result.unitLabel,
     packLabel: result.packLabel,
     quantity: result.quantity,
-    consumerUnitPrice: result.unitBasePrice,
+    consumerUnitPrice,
     consumerTotalPrice: result.basePrice,
     finalConsumerPrice: result.finalPrice,
-    packEstimatedPrice: result.quantity > 1 ? result.finalPrice : null,
     unitPrice: result.unitBasePrice,
     totalPrice: result.finalPrice,
     taxAmount: result.taxAmount,
@@ -44,7 +62,8 @@ function toPatientPricingResponse(result) {
     basePrice: result.basePrice,
     totalTax: result.totalTax,
     finalPrice: result.finalPrice,
-    avgCost: result.avgCost,
+    // Fixes #44: renamed — this was avgCost but is actually the total cost.
+    totalCost: result.totalCost,
     profitAmount: result.profitAmount,
     profitPercent: result.profitPercent
   };
@@ -72,6 +91,14 @@ export const pricingService = {
       throw error;
     }
 
+    // Fixes #40: extreme quantities (e.g. 1e21) produced Infinity prices that
+    // JSON.stringify silently serialized as null while returning HTTP 200.
+    if (quantity > 10000) {
+      const error = new Error("Quantity must not exceed 10000");
+      error.statusCode = 400;
+      throw error;
+    }
+
     const good = goodsRepository.getById(input.goodId);
     if (!good) {
       const error = new Error(`Good '${input.goodId}' not found`);
@@ -90,11 +117,12 @@ export const pricingService = {
       includeTechnicalFee: Boolean(input.includeTechnicalFee),
       taxMultiplier: settings.taxMultiplier,
       roundingRule: settings.roundingRule,
+      pricePolicy: settings.pricePolicy,
       taxData,
       technicalFeeRules: settings.technicalFees,
       avgCost: stock?.avgCost ?? null
     });
 
-    return toPatientPricingResponse(result);
+    return toPatientPricingResponse(result, settings.roundingRule);
   }
 };

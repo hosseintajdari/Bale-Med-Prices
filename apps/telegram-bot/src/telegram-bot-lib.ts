@@ -17,6 +17,9 @@ import {
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_RESULTS = 5;
+// Fixes #29: every outbound fetch gets a timeout — the polling loop is
+// serial, so one hung request used to block all bot updates indefinitely.
+const FETCH_TIMEOUT_MS = 15000;
 
 export class RateLimitedError extends Error {
   constructor(message = "price source is rate-limiting us") {
@@ -145,7 +148,8 @@ export async function callTelegramApi(token: string, method: string, body: unkno
   const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   });
 
   let payload: any = null;
@@ -202,7 +206,9 @@ export async function deleteTelegramWebhook(token: string) {
 /** Thin call to the aggregator API: GET /goods/search?q= */
 export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promise<PriceItem[]> {
   const base = apiBaseUrl.replace(/\/$/, "");
-  const response = await fetch(`${base}/goods/search?${new URLSearchParams({ q: query })}`);
+  const response = await fetch(`${base}/goods/search?${new URLSearchParams({ q: query })}`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  });
 
   if (response.status === 429) {
     throw new RateLimitedError();
@@ -224,7 +230,10 @@ export async function fetchPriceSearch(apiBaseUrl: string, query: string): Promi
 
 export function readTelegramBotConfig(env: NodeJS.ProcessEnv = process.env) {
   const token = env.TELEGRAM_BOT_TOKEN?.trim();
-  const apiBaseUrl = env.API_BASE_URL?.trim() || `http://127.0.0.1:${env.PORT ?? 4000}`;
+  // Fixes #47: PORT conventionally means "the port I listen on" (the bot
+  // listens on nothing) — a PORT set for another purpose used to silently
+  // misroute API calls. Default to the fixed API port instead.
+  const apiBaseUrl = env.API_BASE_URL?.trim() || "http://127.0.0.1:4000";
   const webhookUrl = env.TELEGRAM_WEBHOOK_URL?.trim() || "";
   const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET?.trim() || "";
 
