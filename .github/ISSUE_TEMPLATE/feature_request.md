@@ -1,17 +1,15 @@
 ---
-name: Feature request
-about: Request a product or engineering improvement
-title: "[feature] "
-labels: enhancement
-assignees: ""
+name: Feature request / پیشنهاد قابلیت جدید
+about: Propose a new feature or improvement / پیشنهاد ویژگی جدید یا بهبود
+labels: ["enhancement", "needs-triage"]
 ---
 
-## Goal
+## Goal / هدف
+<!-- What outcome do you want to achieve? / چه هدفی را دنبال می‌کنید؟ -->
 
+## Proposed Solution / راه‌حل پیشنهادی
 
-## Proposed Behavior
+## Alternatives Considered / گزینه‌های دیگر بررسی‌شده
 
-
-## Notes
-
-
+## Acceptance Criteria / معیارهای پذیرش
+- [ ] 

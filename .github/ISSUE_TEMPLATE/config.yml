@@ -1,1 +1,5 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerabilities / گزارش آسیب‌پذیری امنیتی
+    url: https://github.com/hosseintajdari/Bale-Med-Prices/security/advisories/new
+    about: Bale-Med-Pricesrt a security issue privately / گزارش خصوصی مسائل امنیتی

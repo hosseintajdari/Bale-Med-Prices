@@ -1,23 +1,23 @@
 ---
-name: Bug report
-about: Report broken behavior in Bale Med Prices
-title: "[bug] "
-labels: bug
-assignees: ""
+name: Bug report / گزارش باگ
+about: Report a reproducible defect / گزارش خطای قابل بازتولید
+labels: ["bug", "needs-triage"]
 ---
 
-## Problem
+## Summary / خلاصه
+<!-- One-line description of what is broken / توضیح کوتاه یک‌خطی از مشکل -->
 
+## Steps to Reproduce / مراحل بازتولید
+1. 
+2. 
+3. 
 
-## Expected Behavior
+## Expected Behavior / رفتار مورد انتظار
 
+## Actual Behavior / رفتار مشاهده‌شده
 
-## Steps To Reproduce
+## Environment / محیط اجرا
+- OS:
+- Version/commit:
 
-1.
-2.
-3.
-
-## Notes
-
-
+## Logs / Screenshots / لاگ‌ها یا تصاویر
