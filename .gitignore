@@ -19,3 +19,7 @@ local-inputs/
 # Harvested price catalogs are data, not code — never commit them.
 *.sqlite3
 .secrets/
+
+# Backup files from editor/agent sessions
+*.bak-*
+docker-compose.yml.bak-*
