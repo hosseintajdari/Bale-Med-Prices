@@ -536,6 +536,67 @@ export const goods: Good[] = [
       { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
       { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
     ]
+  },
+  {
+    // Brand pair for the rx-price module: same substance, form and
+    // strength — two brands with different prices. The basket must price
+    // the exact product the patient picks, never a substance average.
+    id: "g-1019",
+    internalCode: "INT-1019",
+    barcode: "6261001100196",
+    genericCode: "GEN-MET-500-TAB",
+    title: "Metformin 500mg Tablet (Alef Darou)",
+    persianTitle: "متفورمین ۵۰۰ میلی گرم قرص (الف‌دارو)",
+    englishTitle: "Metformin 500mg Tablet (Alef Darou)",
+    aliases: ["metformin", "متفورمین", "قرص متفورمین"],
+    brand: "Alef Darou",
+    sellPrice: 38000,
+    tempPrice: 0,
+    taxCodes: ["TAX_MED_REDUCED"],
+    nonPharma: false,
+    countInPackage: 30,
+    unitLabel: "tablet",
+    packLabel: "box of 30 tablets",
+    dosageForm: "tablet",
+    strengthLabel: "۵۰۰ میلی‌گرم",
+    patientFormLabel: "قرص",
+    packageDescription: "بسته ۳۰ قرصی",
+    activeStatus: "active",
+    ttacCode: "TTAC-MET-500-A",
+    sources: [
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
+      { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
+      { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
+    ]
+  },
+  {
+    id: "g-1020",
+    internalCode: "INT-1020",
+    barcode: "6261001100202",
+    genericCode: "GEN-MET-500-TAB",
+    title: "Metformin 500mg Tablet (Be Darou)",
+    persianTitle: "متفورمین ۵۰۰ میلی گرم قرص (ب‌دارو)",
+    englishTitle: "Metformin 500mg Tablet (Be Darou)",
+    aliases: ["metformin", "متفورمین", "قرص متفورمین"],
+    brand: "Be Darou",
+    sellPrice: 52000,
+    tempPrice: 0,
+    taxCodes: ["TAX_MED_REDUCED"],
+    nonPharma: false,
+    countInPackage: 30,
+    unitLabel: "tablet",
+    packLabel: "box of 30 tablets",
+    dosageForm: "tablet",
+    strengthLabel: "۵۰۰ میلی‌گرم",
+    patientFormLabel: "قرص",
+    packageDescription: "بسته ۳۰ قرصی",
+    activeStatus: "active",
+    ttacCode: "TTAC-MET-500-B",
+    sources: [
+      { key: "internal", label: "Internal", role: "pricing", priority: 1 },
+      { key: "ttac", label: "TTAC", role: "reference", priority: 1 },
+      { key: "payam-darousaz", label: "Payam Darousaz", role: "comparison", priority: 2 }
+    ]
   }
 ];
 
