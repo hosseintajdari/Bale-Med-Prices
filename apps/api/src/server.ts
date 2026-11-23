@@ -74,6 +74,7 @@ const server = createServer(async (request, response) => {
     "/goods/search",
     "/bot/lookup",
     "/bot/select",
+    "/bot/prescription",
     "/pricing/calculate"
   ]);
 
@@ -142,6 +143,11 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "GET" && requestPath === "/bot/select") {
     botController.select(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && requestPath === "/bot/prescription") {
+    botController.prescription(request, response);
     return;
   }
 
