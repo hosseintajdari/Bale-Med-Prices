@@ -1,3 +1,11 @@
+# Working rules (owner)
+- Infer intent from the request and context; never ask for a rephrase. Take safe, reversible defaults instead of asking; ask ONE short question only when only the owner can decide.
+- Plan in 3 lines or fewer, then execute in the same turn. Verify with real checks (tests, grep) before calling anything done; report evidence.
+- Small commits; push at session end; never force-push main. Handoffs go in TASKS.md or SESSION-REPORT.md.
+- Work only inside this repo. Never commit data/, secrets, tokens, cookies, or local state.
+- After two failed attempts with one approach, change the approach.
+- Close out with a short summary: what changed, the evidence, what remains.
+
 # Agent Notes
 
 Project name in GitHub: `hosseintajdari/Bale-Med-Prices`
