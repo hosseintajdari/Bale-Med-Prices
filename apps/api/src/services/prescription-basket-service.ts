@@ -1,18 +1,33 @@
 import { goodsRepository } from "../repositories/goods-repository.ts";
 import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { pricingService } from "./pricing-service.ts";
-import { prescriptionPresenter } from "./prescription-presenter.ts";
+import {
+  basketTotals,
+  prescriptionPresenter,
+  SERVICE_FEE_LABELS
+} from "./prescription-presenter.ts";
 import { prescriptionSessionStore } from "./prescription-session-store.ts";
 
 // «قیمت نسخه» — prescription basket module (prototype).
 //
 // A patient adds the items of a prescription one by one, reusing the
 // existing single-medicine selection flow (suggestion buttons) per item.
-// Each resolved item is priced with the same patient pricing the bot
-// already serves; the basket shows the itemised list and the total.
+// The flow always lands on one specific product (brand), and the basket
+// prices THAT product — never a substance-level average. On top of the
+// drug prices, the final card carries the services tariff
+// (تعرفه‌ی خدمات درمانی) as its own line; the prescription tariff and
+// the free-purchase tariff are two different numbers from two different
+// sources and are never substituted for each other.
 // Only official public prices are used — no pharmacy operational data.
 
 const DEFAULT_DOCUMENT_DATE = "2026-06-24";
+
+const BASKET_ACTIONS = [
+  { key: "finish", label: "✅ تمام — جمع را ببین" },
+  { key: "remove_last", label: "🗑 آخرین دارو را حذف کن" }
+];
+
+const FINAL_ACTIONS = [{ key: "new_basket", label: "🧾 نسخه‌ی تازه" }];
 
 function defaultPriceResolver(goodId, documentDate) {
   try {
@@ -43,6 +58,41 @@ export function setPriceResolverForTest(resolver) {
 function resolvePrice(goodId, documentDate) {
   const value = priceResolver(goodId, documentDate);
   return value === undefined ? defaultPriceResolver(goodId, documentDate) : value;
+}
+
+// The services tariff is read from the catalog like every other price:
+// the prescription tariff is the «حق فنی» service item. The free-purchase
+// tariff is its OWN item («حق فنی خرید آزاد» / «خدمات خرید آزاد»); the
+// current catalog carries no such item, so this returns null for "free"
+// and the card says the tariff was not found — the prescription number
+// is never borrowed in its place.
+function defaultServiceFeeResolver(kind) {
+  const query = kind === "free" ? "خرید آزاد" : "حق فنی";
+  const match = goodsRepository.search({ query }).find((good) => {
+    const title = (good.persianTitle || good.title || "").trim();
+    return kind === "free"
+      ? title.includes("خرید آزاد") && (title.includes("حق فنی") || title.includes("خدمات"))
+      : title === "حق فنی";
+  });
+
+  if (!match) {
+    return null;
+  }
+
+  return defaultPriceResolver(match.id, undefined);
+}
+
+let serviceFeeResolver = defaultServiceFeeResolver;
+
+// Test seam mirroring setPriceResolverForTest: a number is the tariff,
+// null means "not in the data", undefined delegates to the catalog lookup.
+export function setServiceFeeResolverForTest(resolver) {
+  serviceFeeResolver = resolver ?? defaultServiceFeeResolver;
+}
+
+function resolveServiceFee(kind) {
+  const value = serviceFeeResolver(kind);
+  return value === undefined ? defaultServiceFeeResolver(kind) : value;
 }
 
 function basketError(message) {
@@ -77,6 +127,32 @@ function appendResolvedItem(basket, selection, documentDate) {
   return item;
 }
 
+function basketView(basket, { final = false } = {}) {
+  const serviceFeeAmount = basket.items.length
+    ? resolveServiceFee(basket.kind)
+    : null;
+  const totals = basketTotals(basket.items, serviceFeeAmount);
+  const presentation = prescriptionPresenter.basket(basket.items, {
+    final,
+    kind: basket.kind,
+    serviceFeeAmount
+  });
+
+  return {
+    basketId: basket.id,
+    kind: basket.kind,
+    items: basket.items,
+    totals,
+    serviceFee: {
+      label: SERVICE_FEE_LABELS[basket.kind],
+      amount: totals.serviceFee
+    },
+    text: presentation.text,
+    copyReady: true,
+    actions: final ? FINAL_ACTIONS : basket.items.length ? BASKET_ACTIONS : []
+  };
+}
+
 function selectionStep(basketId, selection) {
   return {
     type: "needs_selection",
@@ -89,14 +165,12 @@ function selectionStep(basketId, selection) {
 }
 
 function addedResponse(basket, item) {
-  const presentation = prescriptionPresenter.basket(basket.items);
+  const view = basketView(basket);
   return {
     type: "added",
-    basketId: basket.id,
     item,
-    items: basket.items,
-    text: `✅ اضافه شد.\n${presentation.text}`,
-    copyReady: true
+    ...view,
+    text: `✅ به نسخه اضافه شد.\n${view.text}`
   };
 }
 
@@ -111,10 +185,12 @@ function handleSelectionResult(basket, selection, documentDate) {
     return {
       type: "not_found",
       basketId: basket.id,
+      kind: basket.kind,
       query: selection.query,
       items: basket.items,
       text: presentation.text,
-      copyReady: true
+      copyReady: true,
+      actions: basket.items.length ? BASKET_ACTIONS : []
     };
   }
 
@@ -130,9 +206,11 @@ function handleSelectionResult(basket, selection, documentDate) {
     return {
       type: "refine_search",
       basketId: basket.id,
+      kind: basket.kind,
       items: basket.items,
       text: selection.text,
-      copyReady: true
+      copyReady: true,
+      actions: basket.items.length ? BASKET_ACTIONS : []
     };
   }
 
@@ -140,22 +218,22 @@ function handleSelectionResult(basket, selection, documentDate) {
   return {
     type: selection.type,
     basketId: basket.id,
+    kind: basket.kind,
     items: basket.items,
     text: selection.text ?? "انتخاب نامعتبر است. لطفاً نام دارو را دوباره بفرستید.",
-    copyReady: true
+    copyReady: true,
+    actions: basket.items.length ? BASKET_ACTIONS : []
   };
 }
 
 export const prescriptionBasketService = {
-  start() {
-    const basketId = prescriptionSessionStore.create();
-    const presentation = prescriptionPresenter.basket([]);
+  start(input = {}) {
+    const kind = input.kind === "free" ? "free" : "prescription";
+    const basketId = prescriptionSessionStore.create({ kind });
+    const basket = prescriptionSessionStore.get(basketId);
     return {
       type: "basket_started",
-      basketId,
-      items: [],
-      text: presentation.text,
-      copyReady: true
+      ...basketView(basket)
     };
   },
 
@@ -194,38 +272,41 @@ export const prescriptionBasketService = {
     }
 
     const [removed] = basket.items.splice(index, 1);
-    const presentation = prescriptionPresenter.basket(basket.items);
     return {
       type: "removed",
-      basketId: basket.id,
       removed,
-      items: basket.items,
-      text: presentation.text,
-      copyReady: true
+      ...basketView(basket)
+    };
+  },
+
+  removeLast(input) {
+    const basket = requireBasket(input.basketId);
+
+    if (!basket.items.length) {
+      throw basketError("سبد خالی است.");
+    }
+
+    const removed = basket.items.pop();
+    return {
+      type: "removed",
+      removed,
+      ...basketView(basket)
     };
   },
 
   view(input) {
     const basket = requireBasket(input.basketId);
-    const presentation = prescriptionPresenter.basket(basket.items);
     return {
       type: "basket_view",
-      basketId: basket.id,
-      items: basket.items,
-      text: presentation.text,
-      copyReady: true
+      ...basketView(basket)
     };
   },
 
   finish(input) {
     const basket = requireBasket(input.basketId);
-    const presentation = prescriptionPresenter.basket(basket.items, { final: true });
     const result = {
       type: "prescription_total",
-      basketId: basket.id,
-      items: basket.items,
-      text: presentation.text,
-      copyReady: true
+      ...basketView(basket, { final: true })
     };
 
     prescriptionSessionStore.close(basket.id);

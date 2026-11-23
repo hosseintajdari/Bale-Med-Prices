@@ -92,7 +92,9 @@ export const botController = {
       let result;
 
       if (action === "start") {
-        result = prescriptionBasketService.start();
+        result = prescriptionBasketService.start({
+          kind: url.searchParams.get("kind") ?? undefined
+        });
       } else if (action === "add") {
         result = prescriptionBasketService.addQuery({
           basketId,
@@ -119,6 +121,8 @@ export const botController = {
           basketId,
           index: url.searchParams.get("index")
         });
+      } else if (action === "remove_last") {
+        result = prescriptionBasketService.removeLast({ basketId });
       } else if (action === "view") {
         result = prescriptionBasketService.view({ basketId });
       } else if (action === "finish") {
