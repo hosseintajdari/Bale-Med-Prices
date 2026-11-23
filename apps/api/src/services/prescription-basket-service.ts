@@ -70,8 +70,13 @@ function resolvePrice(goodId, documentDate) {
 // value Qanun's own rule table carries — and OTC/free-purchase
 // management 81,000 Rial per visit. The catalog «حق فنی» good's price
 // (149,050 Rial) is a stale artifact and is NOT the current tariff;
-// it is never used here. When Qanun's live rule table becomes readable
-// through our data channel, it replaces this table.
+// it is never used here.
+// PROVISIONAL SOURCE: the master reference for all Iranian treatment
+// tariffs is the Ministry's RVU portal (rvu.behdasht.gov.ir); a
+// dedicated line is harvesting it (all sections, all years) into a
+// local tariff database. When that database lands, this table is
+// replaced by a read from it — the values stay as below until then
+// (owner order, 2026-11-23).
 const OFFICIAL_SERVICE_TARIFFS = {
   prescription: 727000,
   free: 81000
