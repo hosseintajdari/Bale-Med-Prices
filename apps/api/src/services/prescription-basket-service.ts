@@ -60,31 +60,24 @@ function resolvePrice(goodId, documentDate) {
   return value === undefined ? defaultPriceResolver(goodId, documentDate) : value;
 }
 
-// The services tariff is read from the catalog like every other price.
-// Its structure mirrors the Qanun software's own logic (extracted from
-// the vendor bundle + its technicalFees rule table — see
-// files/QANUN-TARIFF-LOGIC-EXTRACT-FA.md): the tariff is a separate rule
-// per document kind, and the prescription rule points (tagValue 66669)
-// at the «حق فنی» catalog good — that good's official price is the
-// prescription tariff. The free-purchase tariff comes from Qanun's
-// «عادی» rule family (count/amount bands + time-of-day windows); that
-// live rule table is not part of our data channel, so this returns null
-// for "free" and the card says the tariff was not found — the
-// prescription number is never borrowed in its place.
+// The services tariff, structured the way Qanun's own logic implements
+// it (rule table extracted from the vendor bundle + its technicalFees
+// collection — files/QANUN-TARIFF-LOGIC-EXTRACT-FA.md): one rule per
+// document kind, a fixed amount per document. The amounts are the
+// current official annual tariffs (ابلاغیه تعرفه خدمات دارویی ۱۴۰۵):
+// prescription dispensing 727,000 Rial per prescription — the same
+// value Qanun's own rule table carries — and OTC/free-purchase
+// management 81,000 Rial per visit. The catalog «حق فنی» good's price
+// (149,050 Rial) is a stale artifact and is NOT the current tariff;
+// it is never used here. When Qanun's live rule table becomes readable
+// through our data channel, it replaces this table.
+const OFFICIAL_SERVICE_TARIFFS = {
+  prescription: 727000,
+  free: 81000
+};
+
 function defaultServiceFeeResolver(kind) {
-  const query = kind === "free" ? "خرید آزاد" : "حق فنی";
-  const match = goodsRepository.search({ query }).find((good) => {
-    const title = (good.persianTitle || good.title || "").trim();
-    return kind === "free"
-      ? title.includes("خرید آزاد") && (title.includes("حق فنی") || title.includes("خدمات"))
-      : title === "حق فنی" || String(good.id).includes("66669");
-  });
-
-  if (!match) {
-    return null;
-  }
-
-  return defaultPriceResolver(match.id, undefined);
+  return OFFICIAL_SERVICE_TARIFFS[kind] ?? null;
 }
 
 let serviceFeeResolver = defaultServiceFeeResolver;

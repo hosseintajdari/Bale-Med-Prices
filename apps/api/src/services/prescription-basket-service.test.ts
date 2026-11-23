@@ -11,11 +11,12 @@ import { prescriptionSessionStore } from "./prescription-session-store.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
 import { selectionSessionStore } from "./selection-session-store.ts";
 
-// The current «حق فنی» price in the live catalog (both Qanun channels) —
-// used as the prescription-tariff fixture. The free-purchase fixture is a
-// deliberately different number: the two tariffs must never mix.
-const PRESCRIPTION_FEE = 149050;
-const FREE_FEE = 60000;
+// The current official tariffs (ابلاغیه تعرفه خدمات دارویی ۱۴۰۵):
+// prescription dispensing 727,000 Rial per prescription; OTC /
+// free-purchase management 81,000 Rial per visit. Two distinct numbers —
+// the tests pin that they never mix.
+const PRESCRIPTION_FEE = 727000;
+const FREE_FEE = 81000;
 
 test.beforeEach(() => {
   selectionHistoryStore.resetForTest();
@@ -88,7 +89,7 @@ test("sample Rx 1 (simple): two items + prescription tariff as its own line in t
   assert.throws(() => prescriptionBasketService.view({ basketId }), /قدیمی شده/);
 });
 
-test("sample Rx 2 (selection flow): form and strength picked via suggestion buttons; missing tariff is stated, not invented", () => {
+test("sample Rx 2 (selection flow): form and strength picked via suggestion buttons; default tariff is the official one", () => {
   const { basketId } = prescriptionBasketService.start();
 
   const acetaminophen = walkSelection(
@@ -107,8 +108,21 @@ test("sample Rx 2 (selection flow): form and strength picked via suggestion butt
   assert.equal(ibuprofen.type, "added");
   assert.equal(ibuprofen.item.goodId, "g-1012");
 
-  // The mock catalog carries no «حق فنی» item, so the tariff must come
-  // back unknown — the card says so and the total excludes it.
+  // No seam set: the default resolver serves the official 1405 tariff.
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.totals.serviceFee, PRESCRIPTION_FEE);
+  assert.equal(
+    finished.totals.grandTotal,
+    finished.totals.itemsTotal + PRESCRIPTION_FEE
+  );
+});
+
+test("unknown tariff (resolver returns null): the card says so and the total excludes it", () => {
+  setServiceFeeResolverForTest(() => null);
+  const { basketId } = prescriptionBasketService.start();
+
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
   const finished = prescriptionBasketService.finish({ basketId });
   assert.equal(finished.totals.serviceFee, null);
   assert.equal(finished.totals.grandTotal, finished.totals.itemsTotal);
