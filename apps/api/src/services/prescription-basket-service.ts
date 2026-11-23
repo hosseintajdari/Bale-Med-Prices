@@ -60,19 +60,24 @@ function resolvePrice(goodId, documentDate) {
   return value === undefined ? defaultPriceResolver(goodId, documentDate) : value;
 }
 
-// The services tariff is read from the catalog like every other price:
-// the prescription tariff is the «حق فنی» service item. The free-purchase
-// tariff is its OWN item («حق فنی خرید آزاد» / «خدمات خرید آزاد»); the
-// current catalog carries no such item, so this returns null for "free"
-// and the card says the tariff was not found — the prescription number
-// is never borrowed in its place.
+// The services tariff is read from the catalog like every other price.
+// Its structure mirrors the Qanun software's own logic (extracted from
+// the vendor bundle + its technicalFees rule table — see
+// files/QANUN-TARIFF-LOGIC-EXTRACT-FA.md): the tariff is a separate rule
+// per document kind, and the prescription rule points (tagValue 66669)
+// at the «حق فنی» catalog good — that good's official price is the
+// prescription tariff. The free-purchase tariff comes from Qanun's
+// «عادی» rule family (count/amount bands + time-of-day windows); that
+// live rule table is not part of our data channel, so this returns null
+// for "free" and the card says the tariff was not found — the
+// prescription number is never borrowed in its place.
 function defaultServiceFeeResolver(kind) {
   const query = kind === "free" ? "خرید آزاد" : "حق فنی";
   const match = goodsRepository.search({ query }).find((good) => {
     const title = (good.persianTitle || good.title || "").trim();
     return kind === "free"
       ? title.includes("خرید آزاد") && (title.includes("حق فنی") || title.includes("خدمات"))
-      : title === "حق فنی";
+      : title === "حق فنی" || String(good.id).includes("66669");
   });
 
   if (!match) {
