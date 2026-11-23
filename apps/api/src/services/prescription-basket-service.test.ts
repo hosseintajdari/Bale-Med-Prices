@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { botController } from "../controllers/bot-controller.ts";
-import { insuranceShares } from "./prescription-presenter.ts";
+import { insuranceShares, rowSubsidy } from "./prescription-presenter.ts";
 import { pricingService } from "./pricing-service.ts";
 import {
   prescriptionBasketService,
   setPriceResolverForTest,
-  setServiceFeeResolverForTest
+  setServiceFeeResolverForTest,
+  setSubsidyResolverForTest
 } from "./prescription-basket-service.ts";
 import { prescriptionSessionStore } from "./prescription-session-store.ts";
 import { selectionHistoryStore } from "./selection-history-store.ts";
@@ -25,6 +26,7 @@ test.beforeEach(() => {
   prescriptionSessionStore.resetForTest();
   setPriceResolverForTest(null);
   setServiceFeeResolverForTest(null);
+  setSubsidyResolverForTest(null);
 });
 
 function expectedPrice(goodId) {
@@ -263,6 +265,51 @@ test("no insurance percent → no share lines; free baskets never carry shares",
   prescriptionBasketService.addQuery({ basketId: free.basketId, query: "لوزارتان" });
   const freeFinished = prescriptionBasketService.finish({ basketId: free.basketId });
   assert.equal(freeFinished.insurance, null);
+});
+
+test("currency subsidy (یارانه ارزی): Qanun's per-row rule — config value capped at the unit price, times covered count", () => {
+  assert.equal(rowSubsidy({ unitSubsidy: 5000, unitPrice: 42000, coveredCount: 3 }), 15000);
+  // The subsidy never exceeds the item's own price.
+  assert.equal(rowSubsidy({ unitSubsidy: 999999, unitPrice: 42000, coveredCount: 2 }), 84000);
+  assert.equal(rowSubsidy({ unitSubsidy: null, unitPrice: 42000, coveredCount: 2 }), 0);
+  assert.equal(rowSubsidy({ unitSubsidy: 5000, unitPrice: null, coveredCount: 2 }), 0);
+});
+
+test("currency subsidy in shares: outside the percent multiplication, fully on the insurer side", () => {
+  // Same headline numbers as the IHIO example, but with a 50,000 subsidy
+  // part: Qanun's two-channel accounting gives a different org total
+  // than the blended IHIO multiplication — the documented structural
+  // difference, pinned here on purpose.
+  const shares = insuranceShares({
+    itemsTotal: 400000,
+    serviceFee: null,
+    percent: 71.62,
+    subsidyTotal: 50000
+  });
+  assert.equal(shares.subsidy, 50000);
+  assert.equal(shares.orgDrugs, 250670); // round(350,000 × 71.62%)
+  assert.equal(shares.orgTotal, 300670); // orgDrugs + the whole subsidy
+  assert.equal(shares.patientTotal, 99330);
+  assert.equal(shares.orgTotal + shares.patientTotal, 400000);
+});
+
+test("currency subsidy on a basket: item subsidy flows into the shares and the card", () => {
+  setSubsidyResolverForTest((goodId) => (goodId === "g-1003" ? 20000 : null));
+  const { basketId } = prescriptionBasketService.start({ insurancePercent: 70 });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  const itemsTotal = expectedPrice("g-1003");
+  assert.equal(finished.insurance.subsidy, 20000);
+  assert.equal(
+    finished.insurance.orgTotal + finished.insurance.patientTotal,
+    finished.totals.grandTotal
+  );
+  assert.equal(
+    finished.insurance.orgDrugs,
+    Math.round((itemsTotal - 20000) * 0.7)
+  );
+  assert.match(finished.text, /یارانه ارزی/);
 });
 
 function invokePrescription(url) {

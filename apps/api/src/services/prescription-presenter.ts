@@ -54,20 +54,37 @@ export function basketTotals(items, serviceFeeAmount = null) {
 //   patient share = base − org share
 // applied separately to the drug total and to the services tariff
 // (Qanun rounds the insurer's part of each, the patient takes the rest).
-// Prototype assumption: sell price = committed price (diff = 0).
-export function insuranceShares({ itemsTotal, serviceFee = null, percent }) {
-  const orgDrugs = Math.round((itemsTotal * percent) / 100);
+// The currency subsidy (یارانه ارزی) stays OUTSIDE the percent
+// multiplication in Qanun's accounting: the committed base excludes it
+// and the whole subsidy lands on the insurer side — the patient never
+// pays it. Prototype assumption: sell price = committed price (diff = 0).
+export function insuranceShares({ itemsTotal, serviceFee = null, percent, subsidyTotal = 0 }) {
+  const subsidy = Math.max(0, Math.min(subsidyTotal || 0, itemsTotal));
+  const base = itemsTotal - subsidy;
+  const orgDrugs = Math.round((base * percent) / 100);
   const orgFee = serviceFee == null ? null : Math.round((serviceFee * percent) / 100);
 
   return {
     percent,
+    subsidy,
     orgDrugs,
-    patientDrugs: itemsTotal - orgDrugs,
+    patientDrugs: base - orgDrugs,
     orgFee,
     patientFee: serviceFee == null ? null : serviceFee - orgFee,
-    orgTotal: orgDrugs + (orgFee ?? 0),
-    patientTotal: itemsTotal - orgDrugs + (serviceFee == null ? 0 : serviceFee - orgFee)
+    orgTotal: orgDrugs + (orgFee ?? 0) + subsidy,
+    patientTotal: base - orgDrugs + (serviceFee == null ? 0 : serviceFee - orgFee)
   };
+}
+
+// Qanun's per-row subsidy rule: the unit subsidy comes from the
+// insurer's commitment config for the item and is capped at the unit
+// sell price; the row subsidy is covered-count × unit subsidy.
+export function rowSubsidy({ unitSubsidy, unitPrice, coveredCount = 1 }) {
+  if (unitSubsidy == null || unitPrice == null) {
+    return 0;
+  }
+  const unit = Math.max(0, Math.min(unitSubsidy, unitPrice));
+  return unit * Math.max(0, coveredCount);
 }
 
 export const prescriptionPresenter = {
@@ -111,6 +128,9 @@ export const prescriptionPresenter = {
     }
 
     if (shares) {
+      if (shares.subsidy > 0) {
+        lines.push(`یارانه ارزی: ${formatPriceLine(shares.subsidy)} (این بخش را بیمه می‌دهد)`);
+      }
       lines.push(
         `سهم بیمه: ${formatPriceLine(shares.orgTotal)}`,
         `سهم شما: ${formatPriceLine(shares.patientTotal)}`

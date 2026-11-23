@@ -5,6 +5,7 @@ import {
   basketTotals,
   insuranceShares,
   prescriptionPresenter,
+  rowSubsidy,
   SERVICE_FEE_LABELS
 } from "./prescription-presenter.ts";
 import { prescriptionSessionStore } from "./prescription-session-store.ts";
@@ -99,6 +100,28 @@ function resolveServiceFee(kind) {
   return value === undefined ? defaultServiceFeeResolver(kind) : value;
 }
 
+// The currency subsidy (یارانه ارزی) is per item: in Qanun it sits in the
+// insurer's commitment config for the good (alongside the percent). The
+// bot's price catalog carries no subsidy field yet, so the default
+// resolver returns null (no subsidy known) until the commitment data
+// (insurer tables by generic code) is wired in. Test seam mirrors the
+// price/fee seams: a number is the unit subsidy, null = unknown,
+// undefined = delegate to the default.
+function defaultSubsidyResolver() {
+  return null;
+}
+
+let subsidyResolver = defaultSubsidyResolver;
+
+export function setSubsidyResolverForTest(resolver) {
+  subsidyResolver = resolver ?? defaultSubsidyResolver;
+}
+
+function resolveSubsidyUnit(goodId) {
+  const value = subsidyResolver(goodId);
+  return value === undefined ? defaultSubsidyResolver(goodId) : value;
+}
+
 function basketError(message) {
   const error = new Error(message);
   error.statusCode = 400;
@@ -124,7 +147,8 @@ function appendResolvedItem(basket, selection, documentDate) {
   const item = {
     goodId: selection.goodId,
     title: good?.persianTitle || good?.title || selection.item?.persianTitle || "دارو",
-    unitPrice: resolvePrice(selection.goodId, documentDate)
+    unitPrice: resolvePrice(selection.goodId, documentDate),
+    subsidyUnit: resolveSubsidyUnit(selection.goodId)
   };
 
   basket.items.push(item);
@@ -136,6 +160,10 @@ function basketView(basket, { final = false } = {}) {
     ? resolveServiceFee(basket.kind)
     : null;
   const totals = basketTotals(basket.items, serviceFeeAmount);
+  const subsidyTotal = basket.items.reduce(
+    (sum, item) => sum + rowSubsidy({ unitSubsidy: item.subsidyUnit, unitPrice: item.unitPrice }),
+    0
+  );
   const shares =
     basket.kind === "prescription" &&
     basket.insurancePercent != null &&
@@ -143,7 +171,8 @@ function basketView(basket, { final = false } = {}) {
       ? insuranceShares({
           itemsTotal: totals.itemsTotal,
           serviceFee: totals.serviceFee,
-          percent: basket.insurancePercent
+          percent: basket.insurancePercent,
+          subsidyTotal
         })
       : null;
   const presentation = prescriptionPresenter.basket(basket.items, {
