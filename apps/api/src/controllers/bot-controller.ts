@@ -93,7 +93,8 @@ export const botController = {
 
       if (action === "start") {
         result = prescriptionBasketService.start({
-          kind: url.searchParams.get("kind") ?? undefined
+          kind: url.searchParams.get("kind") ?? undefined,
+          insurancePercent: url.searchParams.get("insurancePercent") ?? undefined
         });
       } else if (action === "add") {
         result = prescriptionBasketService.addQuery({

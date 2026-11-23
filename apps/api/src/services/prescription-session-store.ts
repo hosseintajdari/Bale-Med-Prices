@@ -46,7 +46,7 @@ if (typeof sweepTimer.unref === "function") {
 }
 
 export const prescriptionSessionStore = {
-  create({ items = [], kind = "prescription" } = {}, ttlMs = DEFAULT_BASKET_TTL_MS) {
+  create({ items = [], kind = "prescription", insurancePercent = null } = {}, ttlMs = DEFAULT_BASKET_TTL_MS) {
     sweepExpiredBaskets();
     evictOldestBaskets();
 
@@ -56,7 +56,14 @@ export const prescriptionSessionStore = {
       createdAt: now(),
       expiresAt: now() + ttlMs,
       items: [...items],
-      kind: kind === "free" ? "free" : "prescription"
+      kind: kind === "free" ? "free" : "prescription",
+      insurancePercent:
+        typeof insurancePercent === "number" &&
+        Number.isFinite(insurancePercent) &&
+        insurancePercent > 0 &&
+        insurancePercent <= 100
+          ? insurancePercent
+          : null
     });
 
     return id;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { botController } from "../controllers/bot-controller.ts";
+import { insuranceShares } from "./prescription-presenter.ts";
 import { pricingService } from "./pricing-service.ts";
 import {
   prescriptionBasketService,
@@ -224,6 +225,44 @@ test("remove and removeLast drop items and the totals follow", () => {
 
   const finished = prescriptionBasketService.finish({ basketId });
   assert.equal(finished.totals.itemsTotal, expectedPrice("g-1001"));
+});
+
+test("insurance shares: the IHIO worked example (generic 00020) reproduces exactly", () => {
+  // mdp.ihio.gov.ir notice: 400,000 × 71.62% = 286,480 org share.
+  const shares = insuranceShares({ itemsTotal: 400000, serviceFee: null, percent: 71.62 });
+  assert.equal(shares.orgDrugs, 286480);
+  assert.equal(shares.patientDrugs, 113520);
+  assert.equal(shares.orgTotal + shares.patientTotal, 400000);
+});
+
+test("insurance shares on a basket: drugs and tariff split separately, patient takes the rest", () => {
+  const { basketId } = prescriptionBasketService.start({ insurancePercent: 70 });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  const itemsTotal = expectedPrice("g-1003");
+  assert.equal(finished.insurance.percent, 70);
+  assert.equal(finished.insurance.orgDrugs, Math.round(itemsTotal * 0.7));
+  assert.equal(finished.insurance.orgFee, Math.round(PRESCRIPTION_FEE * 0.7));
+  assert.equal(
+    finished.insurance.orgTotal + finished.insurance.patientTotal,
+    finished.totals.grandTotal
+  );
+  assert.match(finished.text, /سهم بیمه/);
+  assert.match(finished.text, /سهم شما/);
+});
+
+test("no insurance percent → no share lines; free baskets never carry shares", () => {
+  const plain = prescriptionBasketService.start();
+  prescriptionBasketService.addQuery({ basketId: plain.basketId, query: "لوزارتان" });
+  const plainFinished = prescriptionBasketService.finish({ basketId: plain.basketId });
+  assert.equal(plainFinished.insurance, null);
+  assert.doesNotMatch(plainFinished.text, /سهم بیمه/);
+
+  const free = prescriptionBasketService.start({ kind: "free", insurancePercent: 70 });
+  prescriptionBasketService.addQuery({ basketId: free.basketId, query: "لوزارتان" });
+  const freeFinished = prescriptionBasketService.finish({ basketId: free.basketId });
+  assert.equal(freeFinished.insurance, null);
 });
 
 function invokePrescription(url) {

@@ -47,8 +47,31 @@ export function basketTotals(items, serviceFeeAmount = null) {
   };
 }
 
+// Insurer / patient shares, following the Qanun software's own logic
+// reconciled with the IHIO (بیمه سلامت) published formula — see
+// files/QANUN-INSURANCE-LOGIC-EXTRACT-FA.md:
+//   org share = round(committed base × org percent / 100)
+//   patient share = base − org share
+// applied separately to the drug total and to the services tariff
+// (Qanun rounds the insurer's part of each, the patient takes the rest).
+// Prototype assumption: sell price = committed price (diff = 0).
+export function insuranceShares({ itemsTotal, serviceFee = null, percent }) {
+  const orgDrugs = Math.round((itemsTotal * percent) / 100);
+  const orgFee = serviceFee == null ? null : Math.round((serviceFee * percent) / 100);
+
+  return {
+    percent,
+    orgDrugs,
+    patientDrugs: itemsTotal - orgDrugs,
+    orgFee,
+    patientFee: serviceFee == null ? null : serviceFee - orgFee,
+    orgTotal: orgDrugs + (orgFee ?? 0),
+    patientTotal: itemsTotal - orgDrugs + (serviceFee == null ? 0 : serviceFee - orgFee)
+  };
+}
+
 export const prescriptionPresenter = {
-  basket(items, { final = false, kind = "prescription", serviceFeeAmount = null } = {}) {
+  basket(items, { final = false, kind = "prescription", serviceFeeAmount = null, shares = null } = {}) {
     const words = kindWords(kind);
 
     if (!items.length) {
@@ -85,6 +108,13 @@ export const prescriptionPresenter = {
 
     if (totals.unpricedCount > 0) {
       lines.push("داروهایی که قیمتشان پیدا نشد، در جمع حساب نشده‌اند.");
+    }
+
+    if (shares) {
+      lines.push(
+        `سهم بیمه: ${formatPriceLine(shares.orgTotal)}`,
+        `سهم شما: ${formatPriceLine(shares.patientTotal)}`
+      );
     }
 
     if (final) {

@@ -3,6 +3,7 @@ import { medicineSelectionService } from "./medicine-selection-service.ts";
 import { pricingService } from "./pricing-service.ts";
 import {
   basketTotals,
+  insuranceShares,
   prescriptionPresenter,
   SERVICE_FEE_LABELS
 } from "./prescription-presenter.ts";
@@ -130,10 +131,21 @@ function basketView(basket, { final = false } = {}) {
     ? resolveServiceFee(basket.kind)
     : null;
   const totals = basketTotals(basket.items, serviceFeeAmount);
+  const shares =
+    basket.kind === "prescription" &&
+    basket.insurancePercent != null &&
+    basket.items.length
+      ? insuranceShares({
+          itemsTotal: totals.itemsTotal,
+          serviceFee: totals.serviceFee,
+          percent: basket.insurancePercent
+        })
+      : null;
   const presentation = prescriptionPresenter.basket(basket.items, {
     final,
     kind: basket.kind,
-    serviceFeeAmount
+    serviceFeeAmount,
+    shares
   });
 
   return {
@@ -145,6 +157,7 @@ function basketView(basket, { final = false } = {}) {
       label: SERVICE_FEE_LABELS[basket.kind],
       amount: totals.serviceFee
     },
+    insurance: shares,
     text: presentation.text,
     copyReady: true,
     actions: final ? FINAL_ACTIONS : basket.items.length ? BASKET_ACTIONS : []
@@ -227,7 +240,13 @@ function handleSelectionResult(basket, selection, documentDate) {
 export const prescriptionBasketService = {
   start(input = {}) {
     const kind = input.kind === "free" ? "free" : "prescription";
-    const basketId = prescriptionSessionStore.create({ kind });
+    const basketId = prescriptionSessionStore.create({
+      kind,
+      insurancePercent:
+        kind === "prescription" && input.insurancePercent != null
+          ? Number(input.insurancePercent)
+          : null
+    });
     const basket = prescriptionSessionStore.get(basketId);
     return {
       type: "basket_started",
