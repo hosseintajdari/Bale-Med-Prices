@@ -56,6 +56,7 @@ export const prescriptionSessionStore = {
       createdAt: now(),
       expiresAt: now() + ttlMs,
       items: [...items],
+      selectionSessionId: null,
       kind: kind === "free" ? "free" : "prescription",
       insurancePercent:
         typeof insurancePercent === "number" &&

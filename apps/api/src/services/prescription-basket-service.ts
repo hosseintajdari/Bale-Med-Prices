@@ -222,6 +222,18 @@ function basketView(basket, { final = false } = {}) {
   };
 }
 
+function invalidSelectionResponse(basket) {
+  return {
+    type: "invalid_selection",
+    basketId: basket.id,
+    kind: basket.kind,
+    items: basket.items,
+    text: "انتخاب نامعتبر است. لطفاً نام دارو را دوباره بفرستید.",
+    copyReady: true,
+    actions: basket.items.length ? BASKET_ACTIONS : []
+  };
+}
+
 function selectionStep(basketId, selection) {
   return {
     type: "needs_selection",
@@ -321,6 +333,7 @@ export const prescriptionBasketService = {
     }
 
     const selection = medicineSelectionService.start({ query });
+    basket.selectionSessionId = selection.sessionId ?? null;
     return handleSelectionResult(basket, selection, input.documentDate);
   },
 
@@ -331,10 +344,25 @@ export const prescriptionBasketService = {
       throw basketError("Missing required fields 'sessionId' and 'choiceId'");
     }
 
+    if (basket.selectionSessionId !== input.sessionId) {
+      return invalidSelectionResponse(basket);
+    }
+
     const selection = medicineSelectionService.continue({
       sessionId: input.sessionId,
       choiceId: input.choiceId
     });
+
+    if (selection.sessionId) {
+      basket.selectionSessionId = selection.sessionId;
+    } else if (
+      selection.type === "resolved" ||
+      selection.type === "refine_search" ||
+      selection.type === "expired_selection"
+    ) {
+      basket.selectionSessionId = null;
+    }
+
     return handleSelectionResult(basket, selection, input.documentDate);
   },
 
