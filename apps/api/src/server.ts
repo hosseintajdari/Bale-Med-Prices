@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { pricingController } from "./controllers/pricing-controller.ts";
 import { goodsController } from "./controllers/goods-controller.ts";
 import { botController } from "./controllers/bot-controller.ts";
-import { isRateLimited } from "./rate-limiter.ts";
+import { isPrescriptionRateLimited, isRateLimited } from "./rate-limiter.ts";
 import {
   maybeRegisterTelegramWebhookOnStartup,
   telegramWebhookController
@@ -69,14 +69,25 @@ const server = createServer(async (request, response) => {
   }
 
   // Fixes #34: per-IP token bucket on the expensive endpoints so one client
-  // cannot hammer search/pricing/bot lookups.
+  // cannot hammer search/pricing/bot lookups. The basket path is the one
+  // exception (UserSim A5): it is keyed per basket instead of per IP,
+  // because the bot layer calls it from a single host for every patient.
   const rateLimitedPaths = new Set([
     "/goods/search",
     "/bot/lookup",
     "/bot/select",
-    "/bot/prescription",
     "/pricing/calculate"
   ]);
+
+  if (request.method !== "OPTIONS" && requestPath === "/bot/prescription") {
+    if (isPrescriptionRateLimited(request)) {
+      response.statusCode = 429;
+      response.setHeader("Content-Type", "application/json");
+      response.setHeader("Retry-After", "60");
+      response.end(JSON.stringify({ error: "Rate limit exceeded. Please retry shortly." }));
+      return;
+    }
+  }
 
   if (request.method !== "OPTIONS" && rateLimitedPaths.has(requestPath)) {
     if (isRateLimited(request)) {
