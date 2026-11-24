@@ -353,3 +353,312 @@ test("HTTP surface: start (both kinds) → add → finish over /bot/prescription
   const freeStarted = invokePrescription("/bot/prescription?action=start&kind=free");
   assert.equal(freeStarted.body.kind, "free");
 });
+
+test("review: invalid resolver outputs are treated as unavailable, never as totals", () => {
+  for (const badPrice of [Number.NaN, Number.POSITIVE_INFINITY, -5, 0]) {
+    prescriptionSessionStore.resetForTest();
+    selectionSessionStore.resetForTest();
+    selectionHistoryStore.resetForTest();
+    setPriceResolverForTest(() => badPrice);
+
+    const { basketId } = prescriptionBasketService.start();
+    const added = prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+    assert.equal(added.item.unitPrice, null);
+    assert.equal(added.totals.itemsTotal, 0);
+    assert.equal(added.totals.unpricedCount, 1);
+  }
+
+  setPriceResolverForTest(null);
+  for (const badFee of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    prescriptionSessionStore.resetForTest();
+    selectionSessionStore.resetForTest();
+    selectionHistoryStore.resetForTest();
+    setServiceFeeResolverForTest(() => badFee);
+
+    const { basketId } = prescriptionBasketService.start();
+    prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+    const finished = prescriptionBasketService.finish({ basketId });
+    assert.equal(finished.totals.serviceFee, null);
+    assert.equal(finished.totals.grandTotal, finished.totals.itemsTotal);
+    assert.match(finished.text, /بدون تعرفه‌ی خدمات/);
+  }
+});
+
+test("review: a NaN subsidy for one item does not erase a valid subsidy for another", () => {
+  setSubsidyResolverForTest((goodId) =>
+    goodId === "g-1003" ? Number.NaN : goodId === "g-1001" ? 5000 : null
+  );
+  const { basketId } = prescriptionBasketService.start({ insurancePercent: 70 });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+  prescriptionBasketService.addQuery({ basketId, query: "آموکسی سیلین" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.insurance.subsidy, 5000);
+  assert.equal(
+    finished.insurance.orgTotal + finished.insurance.patientTotal,
+    finished.totals.grandTotal
+  );
+  assert.equal(rowSubsidy({ unitSubsidy: Number.NaN, unitPrice: 42000 }), 0);
+  assert.equal(
+    rowSubsidy({ unitSubsidy: 5000, unitPrice: 42000, coveredCount: Number.NaN }),
+    0
+  );
+});
+
+test("review: a selection session belongs to the basket that started it", () => {
+  const basketA = prescriptionBasketService.start().basketId;
+  const basketB = prescriptionBasketService.start().basketId;
+
+  const step = prescriptionBasketService.addQuery({
+    basketId: basketA,
+    query: "متفورمین"
+  });
+  assert.equal(step.type, "needs_selection");
+  const brandChoice = step.choices.find((choice) =>
+    choice.label?.includes("ب‌دارو")
+  );
+
+  const crossBasket = prescriptionBasketService.addSelect({
+    basketId: basketB,
+    sessionId: step.sessionId,
+    choiceId: brandChoice.id
+  });
+  assert.equal(crossBasket.type, "invalid_selection");
+  assert.equal(prescriptionBasketService.view({ basketId: basketB }).items.length, 0);
+
+  const ownBasket = prescriptionBasketService.addSelect({
+    basketId: basketA,
+    sessionId: step.sessionId,
+    choiceId: brandChoice.id
+  });
+  assert.equal(ownBasket.type, "added");
+  assert.equal(ownBasket.item.goodId, "g-1020");
+});
+
+test("review: an earlier selection step cannot be replayed after advancing", () => {
+  const { basketId } = prescriptionBasketService.start();
+  const firstStep = prescriptionBasketService.addQuery({
+    basketId,
+    query: "استامینوفن"
+  });
+  assert.equal(firstStep.type, "needs_selection");
+
+  const formChoice = firstStep.choices[0];
+  const strengthStep = prescriptionBasketService.addSelect({
+    basketId,
+    sessionId: firstStep.sessionId,
+    choiceId: formChoice.id
+  });
+  assert.equal(strengthStep.type, "needs_selection");
+
+  const replay = prescriptionBasketService.addSelect({
+    basketId,
+    sessionId: firstStep.sessionId,
+    choiceId: formChoice.id
+  });
+  assert.equal(replay.type, "invalid_selection");
+
+  const strengthChoice = strengthStep.choices[0];
+  const added = prescriptionBasketService.addSelect({
+    basketId,
+    sessionId: strengthStep.sessionId,
+    choiceId: strengthChoice.id
+  });
+  assert.equal(added.type, "added");
+  assert.equal(prescriptionBasketService.view({ basketId }).items.length, 1);
+});
+
+test("review: remove without an index must not remove the first item", () => {
+  const started = invokePrescription("/bot/prescription?action=start");
+  const basketId = started.body.basketId;
+  invokePrescription(
+    `/bot/prescription?action=add&basketId=${basketId}&q=${encodeURIComponent("لوزارتان")}`
+  );
+
+  const missingIndex = invokePrescription(
+    `/bot/prescription?action=remove&basketId=${basketId}`
+  );
+  assert.equal(missingIndex.statusCode, 400);
+  assert.equal(
+    prescriptionBasketService.view({ basketId }).items.length,
+    1
+  );
+  assert.throws(
+    () => prescriptionBasketService.remove({ basketId, index: null }),
+    /Invalid item index/
+  );
+});
+
+test("review: empty-basket removeLast and finish fail without closing the basket", () => {
+  const { basketId } = prescriptionBasketService.start();
+
+  assert.throws(
+    () => prescriptionBasketService.removeLast({ basketId }),
+    /سبد خالی است/
+  );
+  assert.throws(
+    () => prescriptionBasketService.finish({ basketId }),
+    /سبد خالی است/
+  );
+  assert.equal(prescriptionBasketService.view({ basketId }).items.length, 0);
+});
+
+test("review: insurance percent boundaries are sanitized before shares are shown", () => {
+  for (const invalidPercent of [0, -1, 101, Number.NaN, "abc"]) {
+    prescriptionSessionStore.resetForTest();
+    selectionSessionStore.resetForTest();
+    selectionHistoryStore.resetForTest();
+    setPriceResolverForTest(null);
+    setServiceFeeResolverForTest(null);
+    setSubsidyResolverForTest(null);
+
+    const { basketId } = prescriptionBasketService.start({
+      insurancePercent: invalidPercent
+    });
+    prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+    const finished = prescriptionBasketService.finish({ basketId });
+    assert.equal(finished.insurance, null);
+    assert.doesNotMatch(finished.text, /سهم بیمه/);
+  }
+
+  const { basketId } = prescriptionBasketService.start({ insurancePercent: 100 });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+  const fullCover = prescriptionBasketService.finish({ basketId });
+  assert.equal(fullCover.insurance.patientTotal, 0);
+  assert.equal(fullCover.insurance.orgTotal, fullCover.totals.grandTotal);
+
+  const httpStarted = invokePrescription(
+    "/bot/prescription?action=start&insurancePercent=101"
+  );
+  const httpBasketId = httpStarted.body.basketId;
+  invokePrescription(
+    `/bot/prescription?action=add&basketId=${httpBasketId}&q=${encodeURIComponent("لوزارتان")}`
+  );
+  const httpFinished = invokePrescription(
+    `/bot/prescription?action=finish&basketId=${httpBasketId}`
+  );
+  assert.equal(httpFinished.body.insurance, null);
+});
+
+test("review: duplicate adds are separate one-unit items", () => {
+  const { basketId } = prescriptionBasketService.start();
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.items.length, 2);
+  assert.equal(finished.totals.itemsTotal, expectedPrice("g-1003") * 2);
+  assert.equal(
+    finished.totals.grandTotal,
+    expectedPrice("g-1003") * 2 + PRESCRIPTION_FEE
+  );
+});
+
+test("review: all-unpriced basket keeps the tariff separate and the share identity holds", () => {
+  setPriceResolverForTest(() => null);
+  const { basketId } = prescriptionBasketService.start({ insurancePercent: 70 });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.totals.itemsTotal, 0);
+  assert.equal(finished.totals.unpricedCount, 1);
+  assert.equal(finished.totals.serviceFee, PRESCRIPTION_FEE);
+  assert.equal(finished.totals.grandTotal, PRESCRIPTION_FEE);
+  assert.equal(
+    finished.insurance.orgTotal + finished.insurance.patientTotal,
+    finished.totals.grandTotal
+  );
+  assert.match(finished.text, /قیمتش پیدا نشد/);
+  assert.match(finished.text, /در جمع حساب نشده‌اند/);
+});
+
+test("review: basket subsidy is capped at the item price", () => {
+  setSubsidyResolverForTest(() => 999999999);
+  const { basketId } = prescriptionBasketService.start({ insurancePercent: 70 });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.insurance.subsidy, finished.totals.itemsTotal);
+  assert.equal(finished.insurance.orgDrugs, 0);
+  assert.equal(
+    finished.insurance.orgTotal + finished.insurance.patientTotal,
+    finished.totals.grandTotal
+  );
+});
+
+test("review: invalid remove indexes and unknown baskets fail without mutation", () => {
+  const { basketId } = prescriptionBasketService.start();
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  for (const index of [-1, 1, 1.5, "abc", ""]) {
+    assert.throws(
+      () => prescriptionBasketService.remove({ basketId, index }),
+      /Invalid item index/
+    );
+  }
+  assert.equal(prescriptionBasketService.view({ basketId }).items.length, 1);
+  assert.throws(
+    () => prescriptionBasketService.view({ basketId: "rx-999999" }),
+    /قدیمی شده/
+  );
+
+  const unknown = invokePrescription(
+    "/bot/prescription?action=finish&basketId=rx-999999"
+  );
+  assert.equal(unknown.statusCode, 400);
+  const badAction = invokePrescription("/bot/prescription?action=wat");
+  assert.equal(badAction.statusCode, 400);
+});
+
+test("review: store sanitizes kind and insurance percent at creation", () => {
+  for (const invalidPercent of [Number.NaN, -1, 101, "70"]) {
+    const id = prescriptionSessionStore.create({
+      kind: "weird",
+      insurancePercent: invalidPercent
+    });
+    const basket = prescriptionSessionStore.get(id);
+    assert.equal(basket.kind, "prescription");
+    assert.equal(basket.insurancePercent, null);
+  }
+
+  const fullCoverId = prescriptionSessionStore.create({
+    kind: "free",
+    insurancePercent: 100
+  });
+  assert.equal(prescriptionSessionStore.get(fullCoverId).kind, "free");
+  assert.equal(
+    prescriptionSessionStore.get(fullCoverId).insurancePercent,
+    100
+  );
+});
+
+test("review: undefined from the fee seam delegates to the official free tariff", () => {
+  setServiceFeeResolverForTest((kind) =>
+    kind === "free" ? undefined : PRESCRIPTION_FEE
+  );
+  const { basketId } = prescriptionBasketService.start({ kind: "free" });
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.totals.serviceFee, FREE_FEE);
+  assert.equal(finished.serviceFee.label, "تعرفه‌ی خدمات درمانی (خرید آزاد)");
+});
+
+test("review: basket store expiry and cap hold", async () => {
+  const expiringId = prescriptionSessionStore.create({}, 5);
+  assert.ok(prescriptionSessionStore.get(expiringId));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(prescriptionSessionStore.get(expiringId), null);
+
+  prescriptionSessionStore.resetForTest();
+  let firstId;
+  let lastId;
+  for (let index = 0; index < 2001; index += 1) {
+    const id = prescriptionSessionStore.create({});
+    if (index === 0) firstId = id;
+    if (index === 2000) lastId = id;
+  }
+  assert.equal(prescriptionSessionStore.get(firstId), null);
+  assert.ok(prescriptionSessionStore.get("rx-2"));
+  assert.ok(prescriptionSessionStore.get(lastId));
+});
