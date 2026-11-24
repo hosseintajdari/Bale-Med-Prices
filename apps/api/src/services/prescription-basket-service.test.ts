@@ -728,3 +728,18 @@ test("usersim A4: an invalid remove index fails with a plain Persian message", (
   assert.equal(prescriptionBasketService.view({ basketId }).items.length, 1);
 });
 
+test("usersim B4: removal answers name the removed medicine", () => {
+  const { basketId } = prescriptionBasketService.start();
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+  prescriptionBasketService.addQuery({ basketId, query: "آموکسی سیلین" });
+
+  const removedLast = prescriptionBasketService.removeLast({ basketId });
+  assert.equal(removedLast.type, "removed");
+  assert.match(removedLast.text, /حذف شد/);
+  assert.ok(removedLast.text.includes(removedLast.removed.title));
+
+  const removedByIndex = prescriptionBasketService.remove({ basketId, index: 0 });
+  assert.equal(removedByIndex.type, "removed");
+  assert.match(removedByIndex.text, /حذف شد/);
+  assert.ok(removedByIndex.text.includes(removedByIndex.removed.title));
+});

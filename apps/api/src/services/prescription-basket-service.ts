@@ -256,6 +256,18 @@ function pendingSelectionStep(basket) {
     : null;
 }
 
+// UserSim round 2 (B4): a removal confirms by name — the user hears
+// WHICH medicine left the basket, not just a refreshed list.
+function removedResponse(basket, removed) {
+  const view = basketView(basket);
+  return {
+    type: "removed",
+    removed,
+    ...view,
+    text: `🗑 ${removed.title} حذف شد.\n${view.text}`
+  };
+}
+
 function addedResponse(basket, item) {
   const view = basketView(basket);
   return {
@@ -415,11 +427,7 @@ export const prescriptionBasketService = {
     }
 
     const [removed] = basket.items.splice(index, 1);
-    return {
-      type: "removed",
-      removed,
-      ...basketView(basket)
-    };
+    return removedResponse(basket, removed);
   },
 
   removeLast(input) {
@@ -430,11 +438,7 @@ export const prescriptionBasketService = {
     }
 
     const removed = basket.items.pop();
-    return {
-      type: "removed",
-      removed,
-      ...basketView(basket)
-    };
+    return removedResponse(basket, removed);
   },
 
   view(input) {
