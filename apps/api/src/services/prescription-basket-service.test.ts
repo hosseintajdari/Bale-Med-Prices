@@ -487,7 +487,7 @@ test("review: remove without an index must not remove the first item", () => {
   );
   assert.throws(
     () => prescriptionBasketService.remove({ basketId, index: null }),
-    /Invalid item index/
+    /این قلم در سبد نیست/
   );
 });
 
@@ -595,7 +595,7 @@ test("review: invalid remove indexes and unknown baskets fail without mutation",
   for (const index of [-1, 1, 1.5, "abc", ""]) {
     assert.throws(
       () => prescriptionBasketService.remove({ basketId, index }),
-      /Invalid item index/
+      /این قلم در سبد نیست/
     );
   }
   assert.equal(prescriptionBasketService.view({ basketId }).items.length, 1);
@@ -715,5 +715,16 @@ test("usersim A3: free-purchase basket speaks of خرید, not نسخه", () => 
   assert.equal(added.type, "added");
   assert.match(added.text, /به خرید اضافه شد/);
   assert.doesNotMatch(added.text, /به نسخه اضافه شد/);
+});
+
+test("usersim A4: an invalid remove index fails with a plain Persian message", () => {
+  const { basketId } = prescriptionBasketService.start();
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  assert.throws(
+    () => prescriptionBasketService.remove({ basketId, index: 5 }),
+    /این قلم در سبد نیست/
+  );
+  assert.equal(prescriptionBasketService.view({ basketId }).items.length, 1);
 });
 

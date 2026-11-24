@@ -409,7 +409,9 @@ export const prescriptionBasketService = {
           : Number.NaN;
 
     if (!Number.isInteger(index) || index < 0 || index >= basket.items.length) {
-      throw basketError("Invalid item index");
+      // UserSim round 2 (A4): basket errors speak the patient's plain
+      // Persian, like every other basket message — never raw English.
+      throw basketError("این قلم در سبد نیست.");
     }
 
     const [removed] = basket.items.splice(index, 1);
