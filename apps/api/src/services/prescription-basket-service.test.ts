@@ -424,6 +424,7 @@ test("review: a selection session belongs to the basket that started it", () => 
     choiceId: brandChoice.id
   });
   assert.equal(crossBasket.type, "invalid_selection");
+  assert.match(crossBasket.text, /قدیمی شده/);
   assert.equal(prescriptionBasketService.view({ basketId: basketB }).items.length, 0);
 
   const ownBasket = prescriptionBasketService.addSelect({
@@ -457,6 +458,7 @@ test("review: an earlier selection step cannot be replayed after advancing", () 
     choiceId: formChoice.id
   });
   assert.equal(replay.type, "invalid_selection");
+  assert.match(replay.text, /آخرین پیام/);
 
   const strengthChoice = strengthStep.choices[0];
   const added = prescriptionBasketService.addSelect({

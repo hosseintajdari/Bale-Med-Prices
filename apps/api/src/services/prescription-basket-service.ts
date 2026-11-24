@@ -228,7 +228,7 @@ function invalidSelectionResponse(basket) {
     basketId: basket.id,
     kind: basket.kind,
     items: basket.items,
-    text: "انتخاب نامعتبر است. لطفاً نام دارو را دوباره بفرستید.",
+    text: "این انتخاب قدیمی شده است. از دکمه‌های آخرین پیام استفاده کنید، یا نام دارو را دوباره بفرستید.",
     copyReady: true,
     actions: basket.items.length ? BASKET_ACTIONS : []
   };
