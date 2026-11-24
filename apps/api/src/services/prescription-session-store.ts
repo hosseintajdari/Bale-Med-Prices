@@ -2,7 +2,15 @@
 // Same pattern as selection-session-store.ts (Map + TTL + sweep + cap),
 // kept as a separate store so basket state never mixes with the
 // single-medicine selection sessions.
+//
+// Expiry is sliding (review nit N2): every touch renews the basket for
+// another TTL, so a slow user mid-flow never loses the basket just
+// because 30 minutes passed since it was created. A hard lifetime cap
+// still applies — no basket lives past MAX_BASKET_LIFETIME_MS from
+// creation, however active it is — so a basket cannot be renewed
+// forever.
 const DEFAULT_BASKET_TTL_MS = 30 * 60 * 1000;
+const MAX_BASKET_LIFETIME_MS = 4 * 60 * 60 * 1000;
 const MAX_BASKETS = 2000;
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
@@ -54,6 +62,7 @@ export const prescriptionSessionStore = {
     baskets.set(id, {
       id,
       createdAt: now(),
+      ttlMs,
       expiresAt: now() + ttlMs,
       items: [...items],
       selectionSessionId: null,
@@ -83,6 +92,28 @@ export const prescriptionSessionStore = {
     }
 
     return basket;
+  },
+
+  // Sliding expiry (N2): renew a live basket for another TTL from now,
+  // never past the hard lifetime cap from its creation. Returns false
+  // for a missing or already-expired basket (which is dropped).
+  touch(id) {
+    const basket = baskets.get(id);
+
+    if (!basket) {
+      return false;
+    }
+
+    const current = now();
+
+    if (basket.expiresAt <= current) {
+      baskets.delete(id);
+      return false;
+    }
+
+    const lifetimeCap = basket.createdAt + MAX_BASKET_LIFETIME_MS;
+    basket.expiresAt = Math.min(current + basket.ttlMs, lifetimeCap);
+    return true;
   },
 
   close(id) {

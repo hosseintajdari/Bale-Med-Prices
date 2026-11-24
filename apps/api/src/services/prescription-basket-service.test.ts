@@ -665,6 +665,48 @@ test("review: basket store expiry and cap hold", async () => {
   assert.ok(prescriptionSessionStore.get(lastId));
 });
 
+test("review N2: basket expiry slides with activity — an active basket outlives its creation TTL", async () => {
+  const basketId = prescriptionSessionStore.create({}, 300);
+
+  // A touch every ~80ms for ~400ms total: past the 300ms creation TTL,
+  // yet the basket must still be alive because each touch renews it.
+  for (let step = 0; step < 5; step += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(prescriptionSessionStore.touch(basketId), true);
+    assert.ok(prescriptionSessionStore.get(basketId));
+  }
+
+  // Once activity stops, the basket dies one TTL after the last touch.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(prescriptionSessionStore.get(basketId), null);
+  assert.equal(prescriptionSessionStore.touch(basketId), false);
+});
+
+test("review N2: service activity renews the basket — view keeps a slow user's basket alive", async () => {
+  const basketId = prescriptionSessionStore.create({}, 300);
+
+  for (let step = 0; step < 5; step += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const view = prescriptionBasketService.view({ basketId });
+    assert.equal(view.type, "basket_view");
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.throws(() => prescriptionBasketService.view({ basketId }), /قدیمی شده/);
+});
+
+test("review N2: a failed finish on an open basket still counts as activity", async () => {
+  const basketId = prescriptionSessionStore.create({}, 300);
+
+  // Finish on an empty basket fails, but the basket stays open — and
+  // the attempt itself is user activity, so the expiry slides.
+  for (let step = 0; step < 5; step += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.throws(() => prescriptionBasketService.finish({ basketId }), /سبد خالی است/);
+    assert.ok(prescriptionSessionStore.get(basketId));
+  }
+});
+
 test("usersim A2: finish with a selection still open re-shows the same selection step", () => {
   const { basketId } = prescriptionBasketService.start();
   prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });

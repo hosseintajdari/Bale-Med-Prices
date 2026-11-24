@@ -163,6 +163,12 @@ function requireBasket(basketId) {
     throw basketError("این سبد نسخه قدیمی شده. لطفاً نسخه را از اول شروع کنید.");
   }
 
+  // Sliding expiry (N2): reaching a live basket IS user activity —
+  // every operation funnels through here (add, select, remove, view,
+  // and even a finish that fails on the still-open basket), so the
+  // basket's expiry renews from this moment.
+  prescriptionSessionStore.touch(basketId);
+
   return basket;
 }
 
