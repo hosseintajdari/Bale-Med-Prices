@@ -664,3 +664,42 @@ test("review: basket store expiry and cap hold", async () => {
   assert.ok(prescriptionSessionStore.get("rx-2"));
   assert.ok(prescriptionSessionStore.get(lastId));
 });
+
+test("usersim A2: finish with a selection still open re-shows the same selection step", () => {
+  const { basketId } = prescriptionBasketService.start();
+  prescriptionBasketService.addQuery({ basketId, query: "لوزارتان" });
+
+  const step = prescriptionBasketService.addQuery({ basketId, query: "استامینوفن" });
+  assert.equal(step.type, "needs_selection");
+
+  const reminded = prescriptionBasketService.finish({ basketId });
+  assert.equal(reminded.type, "needs_selection");
+  assert.equal(reminded.sessionId, step.sessionId);
+  assert.deepEqual(reminded.choices, step.choices);
+
+  // The basket is still open and the pending item can still be completed.
+  const completed = walkSelection(basketId, reminded, ["قرص", "۵۰۰"]);
+  assert.equal(completed.type, "added");
+  const finished = prescriptionBasketService.finish({ basketId });
+  assert.equal(finished.type, "prescription_total");
+  assert.equal(finished.items.length, 2);
+});
+
+test("usersim A2: a new add with a selection still open re-shows the pending step instead of dropping it", () => {
+  const { basketId } = prescriptionBasketService.start();
+
+  const firstStep = prescriptionBasketService.addQuery({ basketId, query: "متفور" });
+  assert.equal(firstStep.type, "needs_selection");
+
+  const secondAdd = prescriptionBasketService.addQuery({ basketId, query: "ایبو" });
+  assert.equal(secondAdd.type, "needs_selection");
+  assert.equal(secondAdd.sessionId, firstStep.sessionId);
+  assert.deepEqual(secondAdd.choices, firstStep.choices);
+  assert.equal(prescriptionBasketService.view({ basketId }).items.length, 0);
+
+  // The pending selection still completes normally afterwards.
+  const completed = walkSelection(basketId, secondAdd, ["ب‌دارو"]);
+  assert.equal(completed.type, "added");
+  assert.equal(completed.item.goodId, "g-1020");
+});
+

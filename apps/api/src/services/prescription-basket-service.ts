@@ -245,6 +245,17 @@ function selectionStep(basketId, selection) {
   };
 }
 
+// UserSim round 2 (A2): while a selection question is still open, the
+// pending item must never fall silently — finish() and a fresh add both
+// re-show the very same step instead of moving on without it. The step
+// is kept on the basket so the reminder is the identical message, with
+// its buttons, not a paraphrase.
+function pendingSelectionStep(basket) {
+  return basket.selectionSessionId && basket.pendingSelection
+    ? basket.pendingSelection
+    : null;
+}
+
 function addedResponse(basket, item) {
   const view = basketView(basket);
   return {
@@ -256,12 +267,24 @@ function addedResponse(basket, item) {
 }
 
 function handleSelectionResult(basket, selection, documentDate) {
+  if (
+    selection.type === "needs_form_selection" ||
+    selection.type === "needs_strength_selection" ||
+    selection.type === "needs_identity_selection"
+  ) {
+    const step = selectionStep(basket.id, selection);
+    basket.pendingSelection = step;
+    return step;
+  }
+
   if (selection.type === "resolved") {
+    basket.pendingSelection = null;
     const item = appendResolvedItem(basket, selection, documentDate);
     return addedResponse(basket, item);
   }
 
   if (selection.type === "not_found") {
+    basket.pendingSelection = null;
     const presentation = prescriptionPresenter.notFound(selection.query);
     return {
       type: "not_found",
@@ -275,15 +298,8 @@ function handleSelectionResult(basket, selection, documentDate) {
     };
   }
 
-  if (
-    selection.type === "needs_form_selection" ||
-    selection.type === "needs_strength_selection" ||
-    selection.type === "needs_identity_selection"
-  ) {
-    return selectionStep(basket.id, selection);
-  }
-
   if (selection.type === "refine_search") {
+    basket.pendingSelection = null;
     return {
       type: "refine_search",
       basketId: basket.id,
@@ -295,7 +311,13 @@ function handleSelectionResult(basket, selection, documentDate) {
     };
   }
 
-  // expired_selection / invalid_selection from the selection flow.
+  // expired_selection: the step's buttons are dead — drop the reminder.
+  // invalid_selection: the session is still alive server-side, so the
+  // pending step stays remindable.
+  if (selection.type === "expired_selection") {
+    basket.pendingSelection = null;
+  }
+
   return {
     type: selection.type,
     basketId: basket.id,
@@ -326,6 +348,14 @@ export const prescriptionBasketService = {
 
   addQuery(input) {
     const basket = requireBasket(input.basketId);
+
+    // A2: an item is mid-selection — remind with the same step first;
+    // a new query never silently replaces the pending one.
+    const pending = pendingSelectionStep(basket);
+    if (pending) {
+      return pending;
+    }
+
     const query = (input.query ?? "").trim();
 
     if (!query) {
@@ -413,6 +443,14 @@ export const prescriptionBasketService = {
 
   finish(input) {
     const basket = requireBasket(input.basketId);
+
+    // A2: never close the card while an item is mid-selection — the
+    // final card would look complete but would not be the user's
+    // prescription. Re-show the pending step instead.
+    const pending = pendingSelectionStep(basket);
+    if (pending) {
+      return pending;
+    }
 
     if (!basket.items.length) {
       throw basketError("سبد خالی است.");
