@@ -368,7 +368,13 @@ export const prescriptionBasketService = {
 
   remove(input) {
     const basket = requireBasket(input.basketId);
-    const index = Number(input.index);
+    const rawIndex = input.index;
+    const index =
+      typeof rawIndex === "number"
+        ? rawIndex
+        : typeof rawIndex === "string" && rawIndex.trim()
+          ? Number(rawIndex)
+          : Number.NaN;
 
     if (!Number.isInteger(index) || index < 0 || index >= basket.items.length) {
       throw basketError("Invalid item index");
@@ -407,6 +413,11 @@ export const prescriptionBasketService = {
 
   finish(input) {
     const basket = requireBasket(input.basketId);
+
+    if (!basket.items.length) {
+      throw basketError("سبد خالی است.");
+    }
+
     const result = {
       type: "prescription_total",
       ...basketView(basket, { final: true })
