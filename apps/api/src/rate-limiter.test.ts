@@ -74,3 +74,62 @@ test("prescription rate limiter keys by basket, not by shared IP (A5)", () => {
     resetForTest();
   }
 });
+
+test("prescription route: forged basket ids from one IP cannot escape the route IP ceiling (N1)", () => {
+  resetForTest();
+  process.env.RATE_LIMIT_CAPACITY = "60";
+  process.env.RATE_LIMIT_REFILL_PER_SECOND = "0.0001";
+  process.env.RATE_LIMIT_PRESCRIPTION_IP_CAPACITY = "10";
+  process.env.RATE_LIMIT_PRESCRIPTION_IP_REFILL_PER_SECOND = "0.0001";
+
+  try {
+    // Every forged basketId mints a fresh per-basket bucket, so only a
+    // route-wide per-IP ceiling can bound this flood: of 70 forged
+    // requests from one IP, exactly the ceiling's worth may pass.
+    const results = [];
+    for (let index = 0; index < 70; index += 1) {
+      results.push(
+        isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.77", `rx-forged-${index}`))
+      );
+    }
+
+    assert.equal(results.filter((limited) => !limited).length, 10);
+    assert.equal(results[10], true);
+    assert.equal(results[69], true);
+
+    // The ceiling is per IP: another caller is unaffected.
+    assert.equal(isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.78", "rx-forged-0")), false);
+  } finally {
+    delete process.env.RATE_LIMIT_CAPACITY;
+    delete process.env.RATE_LIMIT_REFILL_PER_SECOND;
+    delete process.env.RATE_LIMIT_PRESCRIPTION_IP_CAPACITY;
+    delete process.env.RATE_LIMIT_PRESCRIPTION_IP_REFILL_PER_SECOND;
+    resetForTest();
+  }
+});
+
+test("prescription route: two real baskets from one IP stay independent under the IP ceiling (N1)", () => {
+  resetForTest();
+  process.env.RATE_LIMIT_CAPACITY = "2";
+  process.env.RATE_LIMIT_REFILL_PER_SECOND = "0.0001";
+  process.env.RATE_LIMIT_PRESCRIPTION_IP_CAPACITY = "50";
+  process.env.RATE_LIMIT_PRESCRIPTION_IP_REFILL_PER_SECOND = "0.0001";
+
+  try {
+    // Basket rx-1 exhausts its own per-basket bucket…
+    assert.equal(isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.9", "rx-1")), false);
+    assert.equal(isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.9", "rx-1")), false);
+    assert.equal(isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.9", "rx-1")), true);
+
+    // …while basket rx-2 on the same host keeps its own allowance, and
+    // a basket-less start from the same host still goes through.
+    assert.equal(isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.9", "rx-2")), false);
+    assert.equal(isPrescriptionRateLimited(fakePrescriptionRequest("10.0.0.9")), false);
+  } finally {
+    delete process.env.RATE_LIMIT_CAPACITY;
+    delete process.env.RATE_LIMIT_REFILL_PER_SECOND;
+    delete process.env.RATE_LIMIT_PRESCRIPTION_IP_CAPACITY;
+    delete process.env.RATE_LIMIT_PRESCRIPTION_IP_REFILL_PER_SECOND;
+    resetForTest();
+  }
+});

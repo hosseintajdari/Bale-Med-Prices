@@ -71,7 +71,9 @@ const server = createServer(async (request, response) => {
   // Fixes #34: per-IP token bucket on the expensive endpoints so one client
   // cannot hammer search/pricing/bot lookups. The basket path is the one
   // exception (UserSim A5): it is keyed per basket instead of per IP,
-  // because the bot layer calls it from a single host for every patient.
+  // because the bot layer calls it from a single host for every patient —
+  // with a loose route-wide per-IP ceiling on top (N1) so forged basket
+  // ids cannot mint fresh buckets to escape every cap.
   const rateLimitedPaths = new Set([
     "/goods/search",
     "/bot/lookup",
