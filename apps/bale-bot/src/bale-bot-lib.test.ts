@@ -101,3 +101,10 @@ test("start/help replies are Persian and command-only", () => {
   assert.ok(help.includes("/help"));
   assert.ok(help.includes("📋 کپی"));
 });
+
+test("start reply carries the «قیمت نسخه» menu button in the rx: namespace", () => {
+  assert.deepEqual(buildStartReply().reply_markup?.inline_keyboard, [
+    [{ text: "🧾 قیمت نسخه", callback_data: "rx:start" }]
+  ]);
+  assert.ok(buildHelpReply().text.includes("قیمت نسخه"));
+});

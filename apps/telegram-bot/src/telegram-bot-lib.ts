@@ -14,6 +14,7 @@ import {
   formatPriceFa,
   toPersianDigits
 } from "../../../packages/domain/src/format-price.ts";
+import { buildPrescriptionMenuButton } from "../../../packages/domain/src/prescription-client.ts";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_RESULTS = 5;
@@ -59,7 +60,9 @@ export function buildStartReply(): TelegramMessage {
       "به بات قیمت دارو خوش آمدید.",
       "",
       "نام دارو را همین‌جا بفرستید — قیمت، منبع و تاریخش را می‌گیرید."
-    ].join("\n")
+    ].join("\n"),
+    // The main-menu entry to the «قیمت نسخه» basket flow (rx: namespace).
+    reply_markup: { inline_keyboard: [[buildPrescriptionMenuButton()]] }
   };
 }
 
@@ -69,6 +72,7 @@ export function buildHelpReply(): TelegramMessage {
       "راهنما:",
       "• نام دارو را به فارسی یا انگلیسی بفرستید",
       "• زیر هر قیمت دکمه‌ی «📋 کپی» هست — قیمت را با یک تپ کپی کنید",
+      "• دکمه‌ی «🧾 قیمت نسخه» در پیام شروع — قیمت کل نسخه را یک‌جا بگیرید",
       "• /start — شروع دوباره",
       "• /help — همین راهنما"
     ].join("\n")
