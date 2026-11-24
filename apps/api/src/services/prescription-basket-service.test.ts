@@ -703,3 +703,17 @@ test("usersim A2: a new add with a selection still open re-shows the pending ste
   assert.equal(completed.item.goodId, "g-1020");
 });
 
+
+test("usersim A3: free-purchase basket speaks of خرید, not نسخه", () => {
+  const started = prescriptionBasketService.start({ kind: "free" });
+  assert.doesNotMatch(started.text, /عکس نسخه/);
+
+  const added = prescriptionBasketService.addQuery({
+    basketId: started.basketId,
+    query: "لوزارتان"
+  });
+  assert.equal(added.type, "added");
+  assert.match(added.text, /به خرید اضافه شد/);
+  assert.doesNotMatch(added.text, /به نسخه اضافه شد/);
+});
+

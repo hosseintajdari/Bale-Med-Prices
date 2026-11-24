@@ -262,7 +262,9 @@ function addedResponse(basket, item) {
     type: "added",
     item,
     ...view,
-    text: `✅ به نسخه اضافه شد.\n${view.text}`
+    // UserSim round 2 (A3): a free purchase is not a prescription —
+    // the confirmation names the basket the user is actually filling.
+    text: `✅ ${basket.kind === "free" ? "به خرید اضافه شد." : "به نسخه اضافه شد."}\n${view.text}`
   };
 }
 

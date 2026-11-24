@@ -120,8 +120,10 @@ export const prescriptionPresenter = {
       return {
         text:
           `🧾 ${words.basketTitle} خالی است.\n` +
-          "اسم اولین دارو را بنویسید و بفرستید.\n" +
-          "اگر اسمش را نمی‌دانید، عکس نسخه را بفرستید.",
+          "اسم اولین دارو را بنویسید و بفرستید." +
+          // A3: the photo-of-prescription hint belongs to prescriptions
+          // only — a free purchase has no prescription to photograph.
+          (kind === "free" ? "" : "\nاگر اسمش را نمی‌دانید، عکس نسخه را بفرستید."),
         copyReady: true
       };
     }
