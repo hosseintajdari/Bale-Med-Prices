@@ -57,9 +57,17 @@ export function setPriceResolverForTest(resolver) {
   priceResolver = resolver ?? defaultPriceResolver;
 }
 
+function validPrice(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
 function resolvePrice(goodId, documentDate) {
   const value = priceResolver(goodId, documentDate);
-  return value === undefined ? defaultPriceResolver(goodId, documentDate) : value;
+  return validPrice(
+    value === undefined ? defaultPriceResolver(goodId, documentDate) : value
+  );
 }
 
 // The services tariff, structured the way Qanun's own logic implements
@@ -95,9 +103,17 @@ export function setServiceFeeResolverForTest(resolver) {
   serviceFeeResolver = resolver ?? defaultServiceFeeResolver;
 }
 
+function validServiceFee(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 function resolveServiceFee(kind) {
   const value = serviceFeeResolver(kind);
-  return value === undefined ? defaultServiceFeeResolver(kind) : value;
+  return validServiceFee(
+    value === undefined ? defaultServiceFeeResolver(kind) : value
+  );
 }
 
 // The currency subsidy (یارانه ارزی) is per item: in Qanun it sits in the
@@ -117,9 +133,17 @@ export function setSubsidyResolverForTest(resolver) {
   subsidyResolver = resolver ?? defaultSubsidyResolver;
 }
 
+function validSubsidy(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 function resolveSubsidyUnit(goodId) {
   const value = subsidyResolver(goodId);
-  return value === undefined ? defaultSubsidyResolver(goodId) : value;
+  return validSubsidy(
+    value === undefined ? defaultSubsidyResolver(goodId) : value
+  );
 }
 
 function basketError(message) {

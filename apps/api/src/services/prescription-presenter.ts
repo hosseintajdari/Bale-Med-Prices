@@ -25,16 +25,27 @@ function kindWords(kind) {
     : { basketTitle: "نسخه‌ی شما", totalLabel: "جمع کل نسخه" };
 }
 
+function isValidPrice(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function validServiceFee(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 function itemLine(item, index) {
-  const price =
-    item.unitPrice == null ? "قیمتش پیدا نشد" : formatPriceLine(item.unitPrice);
+  const price = isValidPrice(item.unitPrice)
+    ? formatPriceLine(item.unitPrice)
+    : "قیمتش پیدا نشد";
   return `${formatFaNumber(index + 1)}. ${item.title} — ${price}`;
 }
 
 export function basketTotals(items, serviceFeeAmount = null) {
-  const pricedItems = items.filter((item) => item.unitPrice != null);
+  const pricedItems = items.filter((item) => isValidPrice(item.unitPrice));
   const itemsTotal = pricedItems.reduce((sum, item) => sum + item.unitPrice, 0);
-  const fee = serviceFeeAmount ?? null;
+  const fee = validServiceFee(serviceFeeAmount);
 
   return {
     itemsTotal,
@@ -59,20 +70,30 @@ export function basketTotals(items, serviceFeeAmount = null) {
 // and the whole subsidy lands on the insurer side — the patient never
 // pays it. Prototype assumption: sell price = committed price (diff = 0).
 export function insuranceShares({ itemsTotal, serviceFee = null, percent, subsidyTotal = 0 }) {
-  const subsidy = Math.max(0, Math.min(subsidyTotal || 0, itemsTotal));
-  const base = itemsTotal - subsidy;
-  const orgDrugs = Math.round((base * percent) / 100);
-  const orgFee = serviceFee == null ? null : Math.round((serviceFee * percent) / 100);
+  const safeItemsTotal =
+    typeof itemsTotal === "number" && Number.isFinite(itemsTotal) && itemsTotal > 0
+      ? itemsTotal
+      : 0;
+  const safePercent = Number.isFinite(percent)
+    ? Math.min(100, Math.max(0, percent))
+    : 0;
+  const safeServiceFee = validServiceFee(serviceFee);
+  const subsidy = Math.max(0, Math.min(subsidyTotal || 0, safeItemsTotal));
+  const base = safeItemsTotal - subsidy;
+  const orgDrugs = Math.round((base * safePercent) / 100);
+  const orgFee =
+    safeServiceFee == null ? null : Math.round((safeServiceFee * safePercent) / 100);
 
   return {
-    percent,
+    percent: safePercent,
     subsidy,
     orgDrugs,
     patientDrugs: base - orgDrugs,
     orgFee,
-    patientFee: serviceFee == null ? null : serviceFee - orgFee,
+    patientFee: safeServiceFee == null ? null : safeServiceFee - orgFee,
     orgTotal: orgDrugs + (orgFee ?? 0) + subsidy,
-    patientTotal: base - orgDrugs + (serviceFee == null ? 0 : serviceFee - orgFee)
+    patientTotal:
+      base - orgDrugs + (safeServiceFee == null ? 0 : safeServiceFee - orgFee)
   };
 }
 
@@ -80,7 +101,11 @@ export function insuranceShares({ itemsTotal, serviceFee = null, percent, subsid
 // insurer's commitment config for the item and is capped at the unit
 // sell price; the row subsidy is covered-count × unit subsidy.
 export function rowSubsidy({ unitSubsidy, unitPrice, coveredCount = 1 }) {
-  if (unitSubsidy == null || unitPrice == null) {
+  if (
+    !Number.isFinite(unitSubsidy) ||
+    !Number.isFinite(unitPrice) ||
+    !Number.isFinite(coveredCount)
+  ) {
     return 0;
   }
   const unit = Math.max(0, Math.min(unitSubsidy, unitPrice));
